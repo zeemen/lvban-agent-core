@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Personal Travel Agent 产品战略与总体架构 V1.2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F3F5F2; --paper-2:#E9EDE8; --ink:#1C2B3A; --ink-2:#4A5A6A; --ink-3:#8A96A2;
+  --line:#CDD5D0; --pine:#2F7F6F; --pine-soft:#D9EAE5; --ochre:#C8763B; --ochre-soft:#F4E3D5;
+  --river:#BFD6E6; --river-deep:#5E8FB3;
+  --pre-fill:#E6EEF2; --mid-fill:#F4E3D5; --post-fill:#E3ECE4;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#141C24; --paper-2:#1C2630; --ink:#E8ECEE; --ink-2:#B3BDC6; --ink-3:#7E8A95;
+    --line:#2E3A46; --pine:#6FC3B0; --pine-soft:#1E3A36; --ochre:#E39A66; --ochre-soft:#3B2A1E;
+    --river:#243B4F; --river-deep:#6FA6CF;
+    --pre-fill:#1F2E3A; --mid-fill:#3B2A1E; --post-fill:#1F3028;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#141C24; --paper-2:#1C2630; --ink:#E8ECEE; --ink-2:#B3BDC6; --ink-3:#7E8A95;
+  --line:#2E3A46; --pine:#6FC3B0; --pine-soft:#1E3A36; --ochre:#E39A66; --ochre-soft:#3B2A1E;
+  --river:#243B4F; --river-deep:#6FA6CF;
+  --pre-fill:#1F2E3A; --mid-fill:#3B2A1E; --post-fill:#1F3028;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);scroll-behavior:smooth}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:"Noto Serif SC","Songti SC","SimSun",serif;font-weight:700;line-height:1.3;margin:0}
+.wrap{max-width:1040px;margin:0 auto;padding:56px 24px 96px}
+header{margin-bottom:56px}
+.version{color:var(--ink-3);font-size:14px;margin-bottom:28px}
+h1{font-size:clamp(34px,6vw,58px);letter-spacing:.02em}
+h1 small{display:block;font-size:.42em;font-weight:500;color:var(--ink-2);margin-top:10px;letter-spacing:.06em}
+.thesis{max-width:34em;margin-top:28px;font-size:18px;color:var(--ink-2)}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 32px;margin-top:32px;font-size:14px;color:var(--ink-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0}
+.meta b{color:var(--ink);font-weight:500;margin-right:.5em}
+nav.toc{margin:0 0 72px;padding:20px 24px;border:1px solid var(--line);background:var(--paper-2);border-radius:6px;font-size:15px}
+nav.toc ol{margin:0;padding-left:1.6em;columns:2;column-gap:40px}
+@media (max-width:720px){nav.toc ol{columns:1}}
+nav.toc li{margin:3px 0;break-inside:avoid}
+nav.toc a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover,nav.toc a:focus{border-bottom-color:var(--pine);outline:none}
+section{margin-bottom:84px}
+h2{font-size:26px;margin-bottom:8px;padding-bottom:10px;border-bottom:2px solid var(--ink)}
+h2 .n{color:var(--ink-3);font-weight:500;margin-right:.6em;font-size:.8em}
+h3{font-size:18px;margin:34px 0 10px}
+h4{font-size:16px;margin:22px 0 6px;color:var(--ink)}
+.lead{color:var(--ink-2);max-width:36em;margin:14px 0 24px}
+p{margin:0 0 14px;max-width:40em}
+ul,ol{max-width:40em;margin:0 0 16px;padding-left:1.4em}
+li{margin:4px 0}
+.figure{overflow-x:auto;border:1px solid var(--line);background:var(--paper-2);border-radius:6px;padding:12px;margin:18px 0}
+.figure svg{display:block;min-width:720px;width:100%;height:auto}
+.caption{font-size:14px;color:var(--ink-3);margin-top:10px}
+.svg-t{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+.svg-h{font-family:"Noto Serif SC","Songti SC",serif;font-weight:700}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:28px 40px}
+@media (max-width:720px){.two{grid-template-columns:1fr}}
+.pair h3{font-size:17px;margin:0 0 6px}
+.pair p{font-size:15px;color:var(--ink-2)}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:8px 0 18px}
+th,td{text-align:left;vertical-align:top;padding:11px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--ink-2);font-weight:500;font-size:13.5px}
+td:first-child{font-weight:500}
+.tbl{overflow-x:auto}
+.rule{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-top:1px dashed var(--line)}
+.rules .rule:first-child{border-top:0}
+.rule b{flex:0 0 7.5em;color:var(--pine)}
+.rule span{color:var(--ink-2);font-size:15px}
+.quote{border-left:3px solid var(--pine);padding:6px 0 6px 18px;margin:18px 0;color:var(--ink);font-family:"Noto Serif SC","Songti SC",serif;font-size:17px;max-width:36em}
+.callout{background:var(--pine-soft);border-radius:6px;padding:14px 18px;margin:18px 0;max-width:44em;font-size:15px}
+.callout.warn{background:var(--ochre-soft)}
+.callout b{color:var(--ink)}
+pre{background:var(--paper-2);border:1px solid var(--line);border-radius:6px;padding:14px 16px;font-size:13.5px;line-height:1.6;overflow-x:auto;max-width:44em;margin:12px 0 18px;color:var(--ink-2)}
+.open{counter-reset:q;list-style:none;padding:0;margin:0;max-width:none}
+.open li{padding:14px 0 14px 2.4em;position:relative;border-bottom:1px solid var(--line);font-size:15.5px}
+.open li::before{counter-increment:q;content:counter(q);position:absolute;left:0;top:14px;width:1.6em;height:1.6em;border:1.5px solid var(--ochre);border-radius:50%;color:var(--ochre);font-size:13px;display:grid;place-items:center;font-weight:500}
+.open li strong{display:block;color:var(--ink);margin-bottom:2px}
+.open li span{color:var(--ink-2)}
+.script{border:1px solid var(--line);border-radius:6px;padding:14px 18px;margin:12px 0 18px;max-width:44em;font-size:15px;background:var(--paper-2)}
+.script .who{color:var(--pine);font-weight:500;margin-right:.6em}
+.script p{margin:0 0 8px}
+.phase{display:grid;grid-template-columns:7em 1fr;gap:10px 18px;padding:14px 0;border-top:1px dashed var(--line)}
+.phase:first-of-type{border-top:0}
+.phase b{color:var(--ochre);font-weight:500}
+.phase span{color:var(--ink-2);font-size:15px}
+footer{color:var(--ink-3);font-size:13.5px;border-top:1px solid var(--line);padding-top:20px}
+@media (prefers-reduced-motion:no-preference){
+  .flow{stroke-dasharray:6 6;animation:drift 6s linear infinite}
+  @keyframes drift{to{stroke-dashoffset:-120}}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="version">Personal Travel Agent · 产品战略与总体架构 · V1.2 · 2026-10-25 · 青少年主线 + 亲子假期版 + O2O 本地服务网络</div>
+  <h1>AI旅伴<small>Personal Travel Agent · 一个陪你走遍中国的 AI Agent</small></h1>
+  <p class="thesis">导游的工作在景点门口开始、在景点门口结束。AI旅伴从"今天我们一起探索什么"开始，到"下次我们去哪"才告一段落。连接这条线的，是记忆。V1.2 的首发战略明确：先服务有独立意识、时间更自由、AI 接受度更高的青少年与青年学生；寒暑假切换亲子研学模式；其他游客采用低教育成本的轻导览模式。</p>
+  <div class="meta">
+    <div><b>品类</b>Personal Travel Agent / AI旅伴</div>
+    <div><b>首发形态</b>一核三模：青少年同游（主线）· K12亲子研学（寒暑假）· 轻导览（泛游客）</div>
+    <div><b>首发场景</b>南京博物院（室内）× 夫子庙（室外）</div>
+    <div><b>模式</b>线上产品为核心 · O2O 获客与服务 · 轻资产 · 手机原生</div>
+    <div><b>载体</b>微信小程序首发，架构 App-ready</div>
+    <div><b>核心客群</b>首选青少年 / 青年学生；其次 K12 家庭；再次其他游客</div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <ol>
+    <li><a href="#s1">产品理念：从"导"到"伴"</a></li>
+    <li><a href="#s2">市场机会与目标用户</a></li>
+    <li><a href="#s3">品牌与命名</a></li>
+    <li><a href="#s4">产品定义与能力地图</a></li>
+    <li><a href="#s5">首发双 Demo 设计</a></li>
+    <li><a href="#s6">核心引擎</a></li>
+    <li><a href="#s7">记忆系统</a></li>
+    <li><a href="#s8">知识与内容</a></li>
+    <li><a href="#s9">技术架构与载体</a></li>
+    <li><a href="#s10">商业模式</a></li>
+    <li><a href="#s11">增长与获客</a></li>
+    <li><a href="#s12">MVP 范围与验证</a></li>
+    <li><a href="#s13">路线图与团队</a></li>
+    <li><a href="#s14">风险与应对</a></li>
+    <li><a href="#s15">下一步：四份技术规格</a></li>
+    <li><a href="#appx">附录：来源整合与裁决</a></li>
+  </ol>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="n">01</span>产品理念：从"导"到"伴"</h2>
+  <p class="lead">这不是"AI 导游"的功能升级，而是产品范式的改变。传统旅游数字产品以景点为基本单位；AI旅伴以"这个人"为基本单位，亲子模式下再扩展为 Family Unit。</p>
+  <div class="two">
+    <div class="pair"><h3>导游式产品</h3><p>景点 → 内容 → 导航 → 讲解。同一套讲解词面向所有人；每次打开都是陌生人；价值在行中、随行程结束而归零。会讲，但不懂你——而"会讲"正在被地图平台、OTA 和通用大模型迅速商品化。</p></div>
+    <div class="pair"><h3>旅伴式 agent</h3><p>个人 / Family Unit → 长期记忆 → 当前环境 → 意图 → 判断 → 服务 → 行动 → 新记忆。先认识谁在旅行，再判断他在哪里；每次打开都接着上次；价值跨越行前、行中、行后，随次数递增。</p></div>
+  </div>
+  <h3>一个 agent 的六个属性</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>属性</th><th>含义</th><th>对应能力</th></tr></thead>
+    <tbody>
+      <tr><td>有身份</td><td>知道自己在陪谁旅行</td><td>个人档案 / Family Unit（身份层记忆）</td></tr>
+      <tr><td>有记忆</td><td>知道一起去过哪、看过什么、问过什么、喜欢什么</td><td>四层记忆 + 语义足迹</td></tr>
+      <tr><td>有环境意识</td><td>知道用户现在在哪、正在看什么、正在做什么</td><td>Context Engine（位置 + 视觉 + 时间 + 活动）</td></tr>
+      <tr><td>有判断</td><td>不是什么都讲，而是决定此刻该不该讲、讲什么、讲多深</td><td>Explanation Planner</td></tr>
+      <tr><td>有主动性</td><td>该提醒时提醒，该沉默时沉默</td><td>Proactivity Engine</td></tr>
+      <tr><td>有连续关系</td><td>一次旅程结束，是下一次的起点</td><td>行后蒸馏 + 关系延续</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quote">产品首页不该先问"你准备去哪个景区"，而应逐步做到问"今天我们准备一起探索什么"。</div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="n">02</span>市场机会与目标用户</h2>
+  <h3>传统导览的六个问题</h3>
+  <ul>
+    <li>讲解围绕地点组织，而不是围绕人；无法适应孩子的年龄和认知差异。</li>
+    <li>单向播放，孩子二十分钟就视觉疲劳、失去兴趣。</li>
+    <li>家长既要做攻略、找路线，又要答问题、管体力，组织成本极高。</li>
+    <li>游览结束即服务结束，孩子的兴趣、提问和经历没有沉淀。</li>
+    <li>人工研学导师体验好，但动辄数百至上千元/半天，供给少、质量不稳。</li>
+    <li>通用 AI 能回答问题，却不知道你在哪、看过什么、接下来适合怎么走。</li>
+  </ul>
+  <h3>一个来自现场的观察：旅游是高度潮汐化的市场</h3>
+  <p>节假日与寒暑假客流高度集中，热门景区“人满为患”；普通工作日却可能明显冷清。这意味着 AI旅伴不能只按“总游客量”判断市场，而要按<strong>时间可支配性 × AI接受度 × 出行频次 × 分享意愿</strong>重新切分用户。</p>
+  <div class="figure">
+    <svg viewBox="0 0 1000 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="旅游潮汐与三类目标人群的互补关系">
+      <g class="svg-h" fill="var(--ink)" font-size="20">
+        <text x="40" y="38">旅游潮汐 × 用户结构</text>
+      </g>
+      <g class="svg-t" font-size="13">
+        <text x="40" y="66" fill="var(--ink-3)">目标不是只追逐节假日峰值，而是用不同客群覆盖不同时间带。</text>
+        <rect x="40" y="96" width="920" height="46" rx="8" fill="var(--paper-2)" stroke="var(--line)"/>
+        <rect x="80" y="108" width="170" height="22" rx="5" fill="var(--pine-soft)"/>
+        <rect x="420" y="108" width="180" height="22" rx="5" fill="var(--ochre-soft)"/>
+        <rect x="720" y="108" width="190" height="22" rx="5" fill="var(--pine-soft)"/>
+        <text x="165" y="124" text-anchor="middle" fill="var(--ink)">春季 / 周末</text>
+        <text x="510" y="124" text-anchor="middle" fill="var(--ink)">暑假 / 黄金周</text>
+        <text x="815" y="124" text-anchor="middle" fill="var(--ink)">秋季 / 周末</text>
+
+        <rect x="40" y="170" width="286" height="112" rx="8" fill="var(--pre-fill)" stroke="var(--line)"/>
+        <text x="58" y="198" fill="var(--ink)" font-weight="700">青少年 / 青年学生｜主线</text>
+        <text x="58" y="223" fill="var(--ink-2)">周末、春秋季、毕业季、平日碎片时间</text>
+        <text x="58" y="246" fill="var(--ink-2)">AI接受度高 · 高频跨城 · 分享欲强</text>
+        <text x="58" y="269" fill="var(--pine)" font-weight="700">作用：填平淡季 + 建立长期记忆</text>
+
+        <rect x="357" y="170" width="286" height="112" rx="8" fill="var(--mid-fill)" stroke="var(--line)"/>
+        <text x="375" y="198" fill="var(--ink)" font-weight="700">K12 家庭｜假期增强</text>
+        <text x="375" y="223" fill="var(--ink-2)">寒暑假、法定假期高度刚性</text>
+        <text x="375" y="246" fill="var(--ink-2)">家长付费明确 · 研学成果价值高</text>
+        <text x="375" y="269" fill="var(--ochre)" font-weight="700">作用：承接旺季 + 提升客单价</text>
+
+        <rect x="674" y="170" width="286" height="112" rx="8" fill="var(--post-fill)" stroke="var(--line)"/>
+        <text x="692" y="198" fill="var(--ink)" font-weight="700">其他游客｜轻导览</text>
+        <text x="692" y="223" fill="var(--ink-2)">全年零散，年龄结构更复杂</text>
+        <text x="692" y="246" fill="var(--ink-2)">不主动承担高成本 AI 市场教育</text>
+        <text x="692" y="269" fill="var(--pine)" font-weight="700">作用：自然转化，不作为首期投放核心</text>
+      </g>
+    </svg>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>优先级</th><th>人群</th><th>出行节律</th><th>产品角色</th><th>战略价值</th></tr></thead>
+    <tbody>
+      <tr><td>首选</td><td>青少年 / 青年学生：有独立意识、出行决策自主度较高、AI 服务接受度高</td><td>周末、春秋季、毕业季、短途跨城；相对有能力填补工作日与非寒暑假时段</td><td>同游搭子：像一个博学、有趣、懂梗的本地朋友</td><td>频次高、跨城多、分享强；最适合验证长期记忆与跨场景复用</td></tr>
+      <tr><td>其次</td><td>K12 家庭（亲子研学版）</td><td>寒暑假和法定假期集中爆发，需求刚性</td><td>对孩子是探索伙伴，对家长是研学助教 + 行程管家</td><td>付费意愿清晰、客单价更高，是旺季核心收入层</td></tr>
+      <tr><td>再次</td><td>其他游客</td><td>全年零散，平日以年龄偏大的游客更常见</td><td>轻导览：即开即用、少配置、少教育</td><td>顺带转化；不承担高额市场教育成本</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><b>一核三模。</b>三类人群不做三套产品，而是共用一个 Agent Core、同一套位置 / Context / Knowledge / Memory 底座，只由 Explanation Planner、任务系统和 UI 入口切换为：<b>青少年同游模式（全年主线）</b>、<b>亲子研学模式（寒暑假增强）</b>、<b>轻导览模式（其他游客）</b>。这样既顺应旅游潮汐，又避免三条研发线同时膨胀。</div>
+  <div class="callout warn"><b>关于"青少年"的边界。</b>16–18 岁仍是未成年人。年满 14 岁后不再适用儿童个人信息的特殊规则，但《未成年人网络保护条例》对不满 18 周岁用户的内容、消费与防沉迷要求依然适用；独立出行的高中生用户，其位置数据提示与消费限额要按未成年人标准设计。</div>
+  <h3>青少年主线：一个懂你的旅行搭子</h3>
+  <p>不讲课、不布置打卡任务，而是边走边聊：看见一块残碑就能问"这上面刻的是什么"，走到乌衣巷能一起拆一首诗，吃饭时能聊秦淮河为什么是这座城市的商业中心。它记得你上个月在苏州聊过的园林，下次去北京会主动接上。分享的是一份有自己口吻的游记，而不是一张打卡截图。</p>
+  <h3>亲子版：两类用户，两套价值</h3>
+  <div class="two">
+    <div class="pair"><h3>对孩子</h3><p>听得懂，不是成人讲解的简化版；可以提问、选择、挑战、表达；游览像一场探索，而不是另一堂课；每次旅行都留下自己的作品。</p></div>
+    <div class="pair"><h3>对家长</h3><p>少做攻略，到现场就能开始；不必自己回答所有问题；能控制节奏、时间、消费和内容深度；知道孩子看了什么、学到了什么、对什么感兴趣；研学成果自然生成，不用游后补做。</p></div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="n">03</span>品牌与命名</h2>
+  <p class="lead">五份企划在命名上得出同一个结论：保留"伴"字的理念，但把"伴游"移出主品牌。</p>
+  <div class="callout warn"><b>为什么不叫"伴游"。</b>在中文互联网语境和应用商店、小程序审核规则中，"伴游"已严重异化，与灰色陪游服务强关联；面向亲子家庭的品牌尤其承受不起这种解释成本，名称本身也可能过不了审。它还会弱化"专业旅行服务"的信任感。</div>
+  <div class="tbl"><table>
+    <thead><tr><th>候选</th><th>来源</th><th>优点</th><th>风险</th><th>裁决</th></tr></thead>
+    <tbody>
+      <tr><td>旅伴 / AI旅伴</td><td>Kimi · ChatGPT</td><td>温暖、陪伴感强，覆盖导游之外的长期关系；品类清晰</td><td>词汇通用，需商标与重名检索</td><td><b>采用为主品牌</b></td></tr>
+      <tr><td>随身向导 / AI旅行管家</td><td>DeepSeek</td><td>专业感与服务感强，信任度高</td><td>偏工具，陪伴感弱</td><td>保留为品类副标或家长端称呼</td></tr>
+      <tr><td>游伴 / 行伴 / 同游</td><td>Gemini</td><td>同行社交感，适合年轻客群</td><td>与亲子研学定位略偏</td><td>备选</td></tr>
+      <tr><td>知行少年 / 寻迹书童</td><td>Gemini</td><td>契合六朝古都与科举文化气场</td><td>"知行"与公司现有道法产品线同名，会造成产品矩阵混淆</td><td>不采用主品牌；"书童"可作孩子端人设名</td></tr>
+      <tr><td>伴游</td><td>原始提议</td><td>最贴近 agent 的陪伴关系</td><td>语义污染、审核风险、信任折损</td><td>不作为任何对外名称</td></tr>
+    </tbody>
+  </table></div>
+  <h3>品牌结构</h3>
+  <ul>
+    <li><b>品类</b>：Personal Travel Agent / AI旅伴</li>
+    <li><b>主品牌</b>：旅伴</li>
+    <li><b>首发产品名</b>：旅伴 · 金陵同游（青少年版）；假期模式：旅伴 · 亲子研学（南京博物院 / 夫子庙实景探索版）</li>
+    <li><b>战略 slogan</b>：越一起走，越懂你。（The more we travel together, the better I know you.）</li>
+    <li><b>亲子版 slogan</b>：陪孩子边走、边看、边问、边学。</li>
+    <li><b>对外话术</b>：不是"AI 版导游词"，而是"有记忆、会主动、懂孩子的私人旅行 agent"；明确"AI 服务，非持证导游"；绝不出现"南京博物院官方""夫子庙指定"等字样。</li>
+  </ul>
+  <h3>一个 agent，三副面孔</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>面对</th><th>人设</th><th>口吻与原则</th></tr></thead>
+    <tbody>
+      <tr><td>青少年（主线）</td><td>同游搭子 / 博学有趣的本地朋友</td><td>平等、接梗、不讲课；先问你怎么看，再说它怎么来；记得你上次聊过什么</td></tr>
+      <tr><td>孩子（亲子模式前台）</td><td>穿梭时空的六朝书童 / 探险队长</td><td>少说教，多提问；不背年代数据，用悬念、故事和寻宝任务对话</td></tr>
+      <tr><td>家长（亲子模式后台）</td><td>研学助教 + 行程管家 + 节奏管理员</td><td>管路线、时间、休息、洗手间、进度，游后交出一份"知识获得感满满"的成果报告</td></tr>
+    </tbody>
+  </table></div>
+  <p>正式使用前须完成：商标检索、小程序名称审核、旅游类目资质咨询、域名与同类产品重名检索。</p>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="n">04</span>产品定义与能力地图</h2>
+  <p class="lead">旅伴不是"电子讲解器"，而是由四层服务构成、围绕一个生命周期循环运转的 AI 陪伴产品。</p>
+  <div class="tbl"><table>
+    <thead><tr><th>服务层</th><th>做什么</th><th>关键原则</th></tr></thead>
+    <tbody>
+      <tr><td>AI 私人导游</td><td>识别当前场景；按年龄、兴趣、可用时间生成讲解；文字 / 语音 / 连续追问；推荐下一站而非机械播放</td><td>成人版、儿童版、亲子讨论版三种表达</td></tr>
+      <tr><td>AI 研学任务官</td><td>找一找 · 猜一猜 · 选一选 · 说一说 · 亲子协作 · 时空连线</td><td>追求观察、提问、表达、关联，不追求答题数量</td></tr>
+      <tr><td>AI 行程管家</td><td>行前生成 60 / 90 / 120 分钟方案；轻松游 / 深度研学 / 孩子主导三种模式；按停留、跳过、提问、疲劳动态减量</td><td>闭馆、限流、预约等易变信息不由 AI 凭空保证</td></tr>
+      <tr><td>家庭旅行记忆</td><td>保存授权的轨迹、点位、任务与偏好；自动回顾；建立孩子兴趣标签；下次延续</td><td>事实记录与 AI 推断分开，家庭可查看、修改、导出、删除</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>生命周期：行前 — 行中 — 行后 — 下次再见</h3>
+  <div class="figure">
+  <svg viewBox="0 0 1000 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="旅伴 agent 能力地图：行前、行中、行后三个阶段与贯穿其下的记忆层">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"/>
+      </marker>
+    </defs>
+    <g class="svg-h" fill="var(--ink)" font-size="22">
+      <text x="40" y="40">行前</text><text x="370" y="40">行中</text><text x="700" y="40">行后</text>
+    </g>
+    <g class="svg-t" fill="var(--ink-3)" font-size="13">
+      <text x="92" y="40">一起决定去哪、怎么去</text><text x="422" y="40">在身边，而且在场</text><text x="752" y="40">把旅程变成记忆</text>
+    </g>
+    <rect x="30" y="58" width="290" height="372" rx="8" fill="var(--pre-fill)" stroke="var(--line)"/>
+    <rect x="360" y="58" width="290" height="372" rx="8" fill="var(--mid-fill)" stroke="var(--ochre)" stroke-width="1.5"/>
+    <rect x="690" y="58" width="290" height="372" rx="8" fill="var(--post-fill)" stroke="var(--line)"/>
+    <g class="svg-t" font-size="13.5">
+      <rect x="46" y="74" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="60" y="97" fill="var(--ink)" font-weight="700" font-size="15">意图理解</text>
+      <text x="60" y="118" fill="var(--ink-2)">和谁去、孩子几年级、几天、预算</text>
+      <text x="60" y="138" fill="var(--ink-2)">体力边界、不能吃的、怕的、烦的</text>
+      <rect x="46" y="162" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="60" y="185" fill="var(--ink)" font-weight="700" font-size="15">协同规划</text>
+      <text x="60" y="206" fill="var(--ink-2)">不输出"攻略"，而是一起定下来</text>
+      <text x="60" y="226" fill="var(--ink-2)">可改、可问为什么、可留白</text>
+      <rect x="46" y="250" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="60" y="273" fill="var(--ink)" font-weight="700" font-size="15">领一个研学问题</text>
+      <text x="60" y="294" fill="var(--ink-2)">不发清单，给孩子一个值得探索的问题</text>
+      <text x="60" y="314" fill="var(--ink-2)">整个旅程围绕它展开</text>
+      <rect x="46" y="338" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="60" y="361" fill="var(--ink)" font-weight="700" font-size="15">预期与准备</text>
+      <text x="60" y="382" fill="var(--ink-2)">哪里会排队、哪里会累、哪里值得慢</text>
+      <text x="60" y="402" fill="var(--ink-2)">门票、预约、天气窗口</text>
+    </g>
+    <g class="svg-t" font-size="13.5">
+      <rect x="376" y="74" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="390" y="97" fill="var(--ink)" font-weight="700" font-size="15">随身讲解</text>
+      <text x="390" y="118" fill="var(--ink-2)">位置 + 镜头 + 语音，看见什么讲什么</text>
+      <text x="390" y="138" fill="var(--ink-2)">按孩子的兴趣讲，不是按词条讲</text>
+      <rect x="376" y="162" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="390" y="185" fill="var(--ink)" font-weight="700" font-size="15">动态调度</text>
+      <text x="390" y="206" fill="var(--ink-2)">排队、下雨、走不动了——改顺序</text>
+      <text x="390" y="226" fill="var(--ink-2)">改的是计划，不改的是目的</text>
+      <rect x="376" y="250" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--ochre)"/>
+      <text x="390" y="273" fill="var(--ink)" font-weight="700" font-size="15">主动在场</text>
+      <text x="390" y="294" fill="var(--ink-2)">到站提醒、该休息了、前方有洗手间</text>
+      <text x="390" y="314" fill="var(--ink-2)">不打扰的前提下，先你一步想到</text>
+      <rect x="376" y="338" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="390" y="361" fill="var(--ink)" font-weight="700" font-size="15">采集与应急</text>
+      <text x="390" y="382" fill="var(--ink-2)">照片、孩子的一句话、被打动的瞬间</text>
+      <text x="390" y="402" fill="var(--ink-2)">走失、生病、丢东西的第一响应</text>
+    </g>
+    <g class="svg-t" font-size="13.5">
+      <rect x="706" y="74" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="720" y="97" fill="var(--ink)" font-weight="700" font-size="15">旅程沉淀</text>
+      <text x="720" y="118" fill="var(--ink-2)">研学手账 + 家长观察报告</text>
+      <text x="720" y="138" fill="var(--ink-2)">可发、可存、可打印</text>
+      <rect x="706" y="162" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="720" y="185" fill="var(--ink)" font-weight="700" font-size="15">偏好更新</text>
+      <text x="720" y="206" fill="var(--ink-2)">这次学到了什么：对科举连续提问、</text>
+      <text x="720" y="226" fill="var(--ink-2)">对青铜器兴趣一般、走不动长路</text>
+      <rect x="706" y="250" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="720" y="273" fill="var(--ink)" font-weight="700" font-size="15">关系延续</text>
+      <text x="720" y="294" fill="var(--ink-2)">下次长假前，先你一步提议</text>
+      <text x="720" y="314" fill="var(--ink-2)">一年后的同一天："还记得吗"</text>
+      <rect x="706" y="338" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="720" y="361" fill="var(--ink)" font-weight="700" font-size="15">分享与回流</text>
+      <text x="720" y="382" fill="var(--ink-2)">手账里带着路线，看到的家庭一键复用</text>
+      <text x="720" y="402" fill="var(--ink-2)">这是最自然的获客入口</text>
+    </g>
+    <g stroke="var(--ink-3)" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+      <path d="M322 244 L356 244"/><path d="M652 244 L686 244"/>
+    </g>
+    <path d="M30 470 C 200 450, 300 500, 500 480 S 800 455, 980 480 L980 540 C 800 520, 700 555, 500 540 S 200 515, 30 535 Z" fill="var(--river)"/>
+    <path class="flow" d="M30 505 C 200 485, 300 532, 500 510 S 800 490, 980 510" fill="none" stroke="var(--river-deep)" stroke-width="2"/>
+    <text class="svg-h" x="56" y="518" fill="var(--ink)" font-size="19">记忆层</text>
+    <g class="svg-t" font-size="13" fill="var(--ink-2)">
+      <text x="140" y="500">身份 · 偏好 · 旅程 · 瞬时</text>
+      <text x="140" y="521">行前读取偏好与历史，行中写入瞬时与旅程，行后把旅程蒸馏成偏好</text>
+    </g>
+    <g stroke="var(--river-deep)" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+      <path d="M175 470 L175 436"/><path d="M505 436 L505 476"/><path d="M835 436 L835 468"/>
+    </g>
+    <g class="svg-t" font-size="12" fill="var(--ink-3)">
+      <text x="184" y="458">读</text><text x="514" y="462">写</text><text x="844" y="458">蒸馏</text>
+    </g>
+    <rect x="30" y="566" width="950" height="38" rx="6" fill="none" stroke="var(--pine)" stroke-dasharray="4 4"/>
+    <text class="svg-t" x="46" y="591" fill="var(--pine)" font-size="14" font-weight="700">主动性引擎</text>
+    <text class="svg-t" x="150" y="591" fill="var(--ink-2)" font-size="13">以时间、位置、天气、状态为触发，决定"此刻该不该开口、说什么"——三个阶段共用的底座，不属于任何一列</text>
+  </svg>
+  </div>
+  <p class="caption">研学任务是贯穿三段的第四条线：行前领一个问题，行中围绕问题触发讲解与采集，行后把答案、足迹和孩子说过的话织成研学记录。</p>
+
+  <h3>第二次使用时的分水岭</h3>
+  <p>家庭包含爸爸、妈妈和一个初一的孩子。agent 已经知道：孩子喜欢历史、不喜欢连续听长讲解、上次对青铜器兴趣一般、对科举制度连续提问、今天只有 90 分钟。进入江南贡院时，它不再播放"江南贡院始建于……"，而是说：</p>
+  <div class="quote">"你上次在南博问过古代人怎么考试。我们现在正好到了江南贡院，要不要沿着'古代南京学生的一天'走一遍？"</div>
+  <p>这句话体现的跨次理解，是旅伴与语音导览的分水岭。</p>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="n">05</span>首发双 Demo 设计</h2>
+  <p class="lead">两个场景不是两个产品，而是同一个 agent 在两种 Context Mode 下运行：共用用户档案、讲解、任务引擎、记忆与游后报告，只替换场景内容；同一个锚点由 Explanation Planner 输出同游版与孩子版两种讲法。</p>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>南京博物院（室内）</th><th>夫子庙 · 秦淮风光带（室外）</th></tr></thead>
+    <tbody>
+      <tr><td>场景主题</td><td>"一件文物，怎样讲述古人的生活？"</td><td>"一条秦淮河，怎样连接读书、考试、商业与城市生活？"</td></tr>
+      <tr><td>研学大问题</td><td>古代的工匠没有电焊，是怎么把金丝嵌进铜壶的？</td><td>古代一个普通人怎样通过读书改变命运？</td></tr>
+      <tr><td>定位方式</td><td>拍展品 / 展牌视觉识别 + 展厅级确认 + 平面图；不承诺精准室内导航</td><td>高德 / 腾讯地图 API，核心节点 15–30 米电子围栏</td></tr>
+      <tr><td>讲解触发</td><td>"拍一下 / 问一下"双入口</td><td>进入围栏自动唤醒 + 屏幕预设"好奇心气泡"抗噪</td></tr>
+      <tr><td>动线形态</td><td>展厅序列，分叉少，按年级裁出一条线</td><td>街巷线性 + 散点；60 / 90 / 120 分钟三档</td></tr>
+      <tr><td>核心节点</td><td>约 18 件核心展品（竹林七贤砖印壁画、错金银铜壶、金缕玉衣等）</td><td>约 12 个文化地标（天下文枢、大成殿、江南贡院、明远楼、文德桥、乌衣巷等）</td></tr>
+      <tr><td>互动形式</td><td>微观视觉寻宝 + 苏格拉底式提问 + 跨时空连线</td><td>实景角色扮演（进京赶考的江南才子）+ 诗词闯关 + 飞花令</td></tr>
+      <tr><td>典型时长</td><td>2–3 小时，中途需要一次休息提醒</td><td>半天到一晚，吃饭是动线的一部分</td></tr>
+      <tr><td>最难的一点</td><td>玻璃反光、人流遮挡下的识别命中率</td><td>人多、信号漂移时的"该不该开口"</td></tr>
+      <tr><td>验证重点</td><td>核心展品识别可靠；"拍一下"自然；讲解明显优于展牌；孩子产生真实连续问答</td><td>围栏触发稳定；不过度打扰；空间与课内知识能连接；轨迹形成有效语义足迹</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>南京博物院：交互剧本示例</h3>
+  <div class="script">
+    <p><span class="who">任务唤醒</span>进入历史馆，agent 不念展牌，而是发布任务："今天我们要在馆里抓出 3 只隐藏的古代神兽，第一只的线索就在你左前方的玻璃柜里！"</p>
+    <p><span class="who">拍一拍</span>孩子拍下错金银铜壶，agent 识别后开启对话："你找到这件铜壶啦！蹲下来仔细看，壶肚子上是不是有很多像网格一样的金丝？你猜猜两千年前的工匠没有电焊，是怎么把金丝嵌进去的？"</p>
+    <p><span class="who">知识降维</span>无论孩子怎么猜，先肯定观察力，再用听得懂的比喻讲清"错金银"工艺。</p>
+    <p><span class="who">微导航</span>"看完这件壁画，往右手边走大约二十步，找一个全身穿满玉片、像古代钢铁侠一样的宝贝，找到后拍给我看！"——用寻宝指令替代冷冰冰的室内地图。</p>
+    <p><span class="who">家长端静默提示</span>"已经连续参观 43 分钟，前方约 80 米有休息区，建议完成当前任务后休息。期间我可以给孩子讲一段故事，您喝杯茶歇口气。"</p>
+  </div>
+
+  <h3>夫子庙：交互剧本示例</h3>
+  <div class="script">
+    <p><span class="who">身份代入</span>踏入牌坊触发围栏："欢迎来到明代的金陵城！今天你是一名进京赶考的江南才子，我是你的随身书童。先去前面的天下第一考场'江南贡院'领号牌吧！"</p>
+    <p><span class="who">实景互动</span>走到号舍前："你比划一下，这间小格子的宽度是不是还没你双臂展开长？古代学子要在里面连考九天九夜。如果是你，你会带哪三样东西进考场？"</p>
+    <p><span class="who">应景对诗</span>走到乌衣巷或文德桥，结合眼前河景拆解刘禹锡的《乌衣巷》，把课本里的必背古诗与真实砖瓦打通。</p>
+    <p><span class="who">双馆联动</span>"上午我们在南京博物院看到的明代状元卷，字写得像印刷体一样工整；现在你眼前的江南贡院，就是当年他们写出那份考卷的地方！"</p>
+  </div>
+
+  <h3>同一节点，青少年同游版的讲法</h3>
+  <div class="script">
+    <p><span class="who">江南贡院 · 号舍</span>"这格子比你宿舍床还窄，九天九夜吃住考都在里面。你刚才说期末周三天没出图书馆——放在明朝，这叫'入闱'。想不想知道当年落榜的人回家怎么跟爸妈交代？"</p>
+    <p><span class="who">乌衣巷</span>不先背诗，先问："你觉得这条巷子现在还住着'王谢'吗？"等用户看一眼招牌再接刘禹锡那两句，顺手聊聊一千年里这条街换过几次主人。</p>
+    <p><span class="who">文德桥</span>"这桥有个'文德分月'的说法，农历十一月十五站在桥中间，月亮正好被桥分成两半。你算算那天你在哪？在的话我提醒你。"</p>
+    <p><span class="who">记忆接续</span>"你上个月在拙政园问过'借景'——秦淮河这一段两岸的马头墙，就是江南建筑把水当成庭院的另一种做法。"</p>
+  </div>
+
+  <div class="callout"><b>室内能力边界。</b>普通手机 GPS 无法支持可靠的展厅级定位。MVP 采用"用户主动选展区 + 拍照辅助识别（结果允许纠正）+ 展品编号 + 已访问点位推断"的组合，不伪造精确位置，记录的是用户确认过的展区与展品。开发第一件事是在玻璃反光与人流遮挡下实测识别命中率：低于八成，就把行中交互从"拍一下"改成"问一句"为主，内容库的组织方式随之调整。</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2><span class="n">06</span>核心引擎</h2>
+  <p class="lead">行中是 agent 真正发生的地方。它要持续回答五个问题：我在哪、我在看什么、我在做什么、我现在需要什么、此刻该怎么服务——Context → Decision → Skill → Response / Action。</p>
+
+  <h3>Context Engine：把一切输入压成一个"当前状态"</h3>
+  <p>输入位置（GPS / 地图 / POI）、视觉（相机 / VLM）、时间、当前路线、是否在移动、正在聊什么、以前发生过什么、正在吃饭还是行走。输出一份当前上下文状态，交给决策引擎：</p>
+<pre>{
+  "location": "江南贡院",   "scene": "outdoor",
+  "family": "2 adults + 1 child",   "child_grade": "初一",
+  "current_topic": "科举",   "interest": "high",
+  "fatigue": "medium",   "time_left": 62,   "next_goal": "文德桥"
+}</pre>
+
+  <h3>Proactivity Engine：决定什么时候开口</h3>
+  <p>进入围栏 ≠ 必须开口。系统还要看：是否刚讲过、用户是否正在说话、是否在吃饭、是否高速移动、之前是否连续被忽略、孩子是否正在做任务、本次触发的内容价值够不够高。</p>
+  <div class="figure">
+  <svg viewBox="0 0 1000 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="主动性引擎决策链：上下文、机会识别、价值评分、打扰成本、用户偏好、行动决策">
+    <defs><marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"/></marker></defs>
+    <g class="svg-t" font-size="14">
+      <rect x="20" y="40" width="130" height="56" rx="6" fill="var(--paper)" stroke="var(--line)"/><text x="85" y="73" text-anchor="middle" fill="var(--ink)">上下文</text>
+      <rect x="180" y="40" width="130" height="56" rx="6" fill="var(--paper)" stroke="var(--line)"/><text x="245" y="73" text-anchor="middle" fill="var(--ink)">机会识别</text>
+      <rect x="340" y="40" width="130" height="56" rx="6" fill="var(--paper)" stroke="var(--line)"/><text x="405" y="73" text-anchor="middle" fill="var(--ink)">价值评分</text>
+      <rect x="500" y="40" width="130" height="56" rx="6" fill="var(--paper)" stroke="var(--line)"/><text x="565" y="73" text-anchor="middle" fill="var(--ink)">打扰成本</text>
+      <rect x="660" y="40" width="130" height="56" rx="6" fill="var(--paper)" stroke="var(--line)"/><text x="725" y="73" text-anchor="middle" fill="var(--ink)">家庭偏好</text>
+      <rect x="820" y="30" width="160" height="76" rx="6" fill="var(--pine-soft)" stroke="var(--pine)"/><text x="900" y="62" text-anchor="middle" fill="var(--ink)" font-weight="700">行动决策</text><text x="900" y="86" text-anchor="middle" fill="var(--ink-2)" font-size="12">SAY · SUGGEST · WAIT · DO · ASK</text>
+    </g>
+    <g stroke="var(--ink-3)" stroke-width="1.5" fill="none" marker-end="url(#arr3)">
+      <path d="M150 68 L178 68"/><path d="M310 68 L338 68"/><path d="M470 68 L498 68"/><path d="M630 68 L658 68"/><path d="M790 68 L818 68"/>
+    </g>
+    <g class="svg-t" font-size="12.5" fill="var(--ink-2)">
+      <text x="30" y="140">SAY 主动讲话</text><text x="190" y="140">SUGGEST 弹卡片 / 家长端静默提示</text><text x="470" y="140">WAIT 等待</text><text x="580" y="140">DO 执行低风险动作</text><text x="760" y="140">ASK 需要用户确认</text>
+      <text x="30" y="175" fill="var(--pine)" font-weight="700">原则：少而准的主动，远胜多而烦的提醒。</text>
+    </g>
+  </svg>
+  </div>
+
+  <h3>Explanation Planner：不是"找到答案"，而是"决定怎么讲"</h3>
+  <p>agent 不把检索结果直接念出来。规划器输入当前展品、孩子年龄与年级、兴趣、已经听过什么、疲劳程度、本次研学主题、家长需求；输出是否讲、讲多长、用什么语言、先提问还是先讲、是否用故事、是否联系教材、是否关联过去记忆、是否留悬念、是否生成下一任务。同一件文物，对不同孩子有不同讲法。</p>
+
+  <h3>Learning Engine：问题驱动的探索</h3>
+  <p>研学不等于给景点加十道题。结构是：大问题 → 观察 → 子问题 → 证据 → 对话 → 反思 → 结论。以夫子庙为例，"古代一个普通人怎样通过读书改变命运"沿着夫子庙 → 国学 → 江南贡院 → 号舍 → 科举 → 状元 → 社会流动展开。城市就是教材：秦淮河同时是历史（为什么南京长期重要）、地理（城市为什么沿河形成）、语文（诗人眼中的秦淮）、建筑（为什么沿水展开）和社会（商业为什么聚集）。知识结构因此不是单一景点库，而是 Place × Knowledge × Curriculum。</p>
+  <div class="tbl"><table>
+    <thead><tr><th>学段</th><th>讲法</th><th>抓手</th></tr></thead>
+    <tbody>
+      <tr><td>小学低龄</td><td>它像什么、怎么用、有什么故事</td><td>神兽、寻宝、色彩、角色扮演</td></tr>
+      <tr><td>小学高龄</td><td>谁制作、怎样制作、为什么这样设计</td><td>原因、比较、时间线、任务</td></tr>
+      <tr><td>初中</td><td>材料、技术、制度、贸易与文化交流</td><td>历史背景、语文课文、社会影响、因果关系</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2><span class="n">07</span>记忆系统</h2>
+  <p class="lead">长期护城河不是 RAG，而是长期记忆。记忆的目的不是储存更多数据，而是让下一次服务比这一次更懂这个人。记忆的基本对象是一个人；亲子模式下扩展为 Family Unit，孩子的记忆由家长账户掌控。</p>
+  <div class="figure">
+  <svg viewBox="0 0 1000 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="四层记忆模型：身份、偏好、旅程、瞬时">
+    <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--pine)"/></marker></defs>
+    <g class="svg-t">
+      <rect x="40" y="300" width="920" height="70" rx="6" fill="var(--pre-fill)" stroke="var(--line)"/>
+      <text class="svg-h" x="60" y="330" fill="var(--ink)" font-size="18">身份层</text>
+      <text x="60" y="354" fill="var(--ink-2)" font-size="13">个人为主：年龄段 · 学习 / 职业阶段 · 长期旅行节奏 · 稳定兴趣方向；亲子模式扩展为家长 + 孩子的 Family Unit</text>
+      <text x="880" y="340" fill="var(--ink-3)" font-size="12" text-anchor="end">写入最慎</text>
+      <rect x="90" y="214" width="820" height="70" rx="6" fill="var(--post-fill)" stroke="var(--line)"/>
+      <text class="svg-h" x="110" y="244" fill="var(--ink)" font-size="18">偏好层</text>
+      <text x="110" y="268" fill="var(--ink-2)" font-size="13">个人：历史 ★★★★★ · 建筑 ★★★★ · 城市漫步 ★★★★★ · 不爱排长队；亲子模式另维护孩子兴趣与家庭节奏</text>
+      <text x="830" y="254" fill="var(--ink-3)" font-size="12" text-anchor="end">需多次验证</text>
+      <rect x="140" y="128" width="720" height="70" rx="6" fill="var(--mid-fill)" stroke="var(--line)"/>
+      <text class="svg-h" x="160" y="158" fill="var(--ink)" font-size="18">旅程层</text>
+      <text x="160" y="182" fill="var(--ink-2)" font-size="13">每次旅行一个 Episode：城市、景点、原始轨迹、停留、提问、互动、任务进度、照片、高光时刻、家庭反馈</text>
+      <text x="780" y="168" fill="var(--ink-3)" font-size="12" text-anchor="end">一次一份</text>
+      <rect x="190" y="42" width="620" height="70" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+      <text class="svg-h" x="210" y="72" fill="var(--ink)" font-size="18">瞬时层</text>
+      <text x="210" y="96" fill="var(--ink-2)" font-size="13">"我累了" "这个特别有意思" "我们只有 30 分钟" "这个不用讲了" · 用于当次决策，不自动升级为长期标签</text>
+      <text x="730" y="82" fill="var(--ink-3)" font-size="12" text-anchor="end">不持久</text>
+    </g>
+    <g stroke="var(--pine)" stroke-width="1.5" fill="none" marker-end="url(#arr2)">
+      <path d="M165 112 L165 126"/><path d="M115 198 L115 212"/><path d="M65 284 L65 298"/>
+    </g>
+    <text class="svg-t" x="20" y="208" fill="var(--pine)" font-size="13" font-weight="700" transform="rotate(-90 20 208)" text-anchor="middle">蒸馏：往下沉</text>
+    <path d="M975 52 L975 362" stroke="var(--ink-3)" stroke-width="1" fill="none" stroke-dasharray="2 4"/>
+    <text class="svg-t" x="988" y="60" fill="var(--ink-3)" font-size="12" transform="rotate(90 988 60)">时效性高 ←——————————→ 稳定度高</text>
+  </svg>
+  </div>
+
+  <h3>蒸馏规则</h3>
+  <div class="rules">
+    <div class="rule"><b>瞬时 → 旅程</b><span>用户明确表达的状态和意愿即时写入；系统推断的只作为本次参考，不写入。</span></div>
+    <div class="rule"><b>旅程 → 偏好</b><span>行后一次性蒸馏：同类信号在本次出现 ≥ 2 次，或用户在行后回顾中确认，才升为偏好；首次出现只记"提过一次"。阈值待真实数据调优。</span></div>
+    <div class="rule"><b>偏好 → 身份</b><span>跨 ≥ 3 次旅程稳定成立，且与同行结构无关，才沉入身份层；身份层每一条都应可被本人看到并一键删除；亲子模式下由监护人管理儿童数据。</span></div>
+    <div class="rule"><b>轨迹 → 足迹</b><span>原始定位点只在旅程层保留，行程结束后 7 天内压缩；长期沉淀的是"语义足迹"。</span></div>
+    <div class="rule"><b>不写入</b><span>健康状况、财务、敏感身份属性，以及任何用户没说、是系统猜的"画像"。未成年人数据按年龄与监护关系处理；亲子模式下儿童数据由监护人账户掌控，可整体导出、可一键删除——伴的前提是不被窥视。</span></div>
+  </div>
+
+  <h3>位置记忆：轨迹不是地图线，而是人生记忆</h3>
+  <p>这是 V1.0 的核心战略决定：<b>在授权使用模式下产生的位置与旅行轨迹，必须进入长期记忆体系；但原始 GPS 点不是最终资产。</b>轨迹经 Track → Stop Detection → POI Matching → Event Detection → Semantic Distillation，沉淀为人—地点—时间—行为—问题—兴趣—意义的语义足迹：</p>
+<pre>2026 南京家庭旅行
+├ 南京博物院   停留 2h36m
+│  ├ 历史馆   停留 48min
+│  │  └ 竹林七贤砖印壁画   停留 11min · 提问 4 次 · 兴趣信号：高
+│  └ 青铜器展区   停留 7min · 跳过多数展品
+└ 夫子庙   停留 2h18m
+   ├ 江南贡院   停留 31min · 提问 8 次 · 兴趣 ★★★★★
+   └ 秦淮河   停留 14min</pre>
+  <h4>采集原则：Usage Mode Collection</h4>
+  <p>只有用户明确"开始今天的旅程"才进入 Journey Session；不做全天候或后台持续追踪。实时定位权限与长期轨迹保存分别说明、分别选择（"本次不保存轨迹 / 仅保存访问点位 / 保存完整轨迹"）。行程结束明确提醒并提供一键删除。室内不伪造精确位置。精确轨迹与可分享内容分离，分享内容默认不含轨迹、孩子真实姓名与实时位置。</p>
+  <h4>儿童与家庭数据原则</h4>
+  <p>Parent-controlled（儿童账户由家长管理）· Consent-first（明确授权后使用）· Purpose-limited（只为旅行与研学）· Memory-visible（能看到 agent 记住了什么，并解释"为什么这样推荐"）· Editable · Deletable · Exportable · No hidden profiling（系统推断不偷偷写入长期身份）。</p>
+  <div class="callout warn"><b>未成年人合规。</b>14 岁以下儿童的位置与行为数据，需监护人单独同意并适用单独的处理规则（《个人信息保护法》第 31 条、《儿童个人信息网络保护规定》）。定位采集的告知、足迹的导出与删除、家长账户的掌控权，要在 demo 阶段定下结构；上线前单独完成法律法规与平台规则的合规评估，本企划不替代专项法律意见。</div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2><span class="n">08</span>知识与内容</h2>
+  <p class="lead">纯线上轻资产并不意味着没有资产。内容与数据就是资产——它要讲得比几百块请的野导游好，比官方语音导览有趣，而且不能编。</p>
+  <h3>五层知识架构</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>层</th><th>内容</th><th>首发做法</th></tr></thead>
+    <tbody>
+      <tr><td>K1 可信资料源</td><td>南博公开藏品库、南京地方志、六朝典籍、中小学历史 / 语文教材相关篇目</td><td>抓取、清洗、标注来源与更新时间</td></tr>
+      <tr><td>K2 结构化知识</td><td>人物、事件、时间、地点、文物之间的关系</td><td>两馆知识图谱雏形</td></tr>
+      <tr><td>K3 RAG 层</td><td>长尾知识问答，应对孩子的"十万个为什么"</td><td>向量库 + 现场展牌视觉读取兜底</td></tr>
+      <tr><td>K4 精调体验层</td><td>Top 30 体验锚点，人工打磨</td><td>南博 18 件 + 夫子庙 12 处</td></tr>
+      <tr><td>K5 学习连接层</td><td>课标、教材与年龄适配</td><td>与现有初中语文、道法知识库衔接</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Top 30 锚点的八个要素</h3>
+  <p>每个锚点人工精调：开场悬念 → 观察引导 → 提问 → 解释（三个学段各一版比喻）→ 故事 → 课本连接 → 记忆连接 → 下一步动作。其余内容由 RAG 覆盖，保证核心体验百分之百稳健。</p>
+  <h3>防幻觉：Evidence-first</h3>
+  <p>回答优先顺序：权威知识库 → 结构化图谱 → RAG 检索 → 现场展牌视觉读取 → 明确表达"不确定"并引导看现场说明或官方信息。年代、文物名称、尺寸、出土地点、人物关系、历史事件必须有据可查；区分确定事实、学术解释和传说故事；核心讲解经人工审校；建立错误反馈入口，问题内容可快速下线。</p>
+  <h3>儿童交互原则</h3>
+  <ul>
+    <li>不用排名和连续打卡制造焦虑；不用奖励诱导过度停留或消费。</li>
+    <li>不随意收集孩子的语音、照片和人脸信息。</li>
+    <li>不鼓励孩子脱离家长单独行动；室外任务不要求边走边长时间盯屏。</li>
+    <li>在道路、台阶和拥挤区域优先提示安全，而不是继续推送任务。</li>
+    <li>轻量国风插画卡片 + 语音流（锁屏可听）+ 关键时刻唤醒相机，省电优先。</li>
+  </ul>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2><span class="n">09</span>技术架构与载体</h2>
+  <p class="lead">一个 Agent，多个 Skill：不为每个景区重新造产品。原有的博物馆导览能力不需要推翻，而是下沉为 agent 的一个 Domain Skill。</p>
+  <div class="figure">
+  <svg viewBox="0 0 1000 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="五层总体架构">
+    <g class="svg-t">
+      <rect x="60" y="20" width="880" height="64" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+      <text class="svg-h" x="80" y="46" fill="var(--ink)" font-size="16">体验层</text>
+      <text x="80" y="70" fill="var(--ink-2)" font-size="13">微信小程序 · 未来 App · 语音 · 相机 · 地图 · 家长端 / 孩子端</text>
+      <rect x="60" y="104" width="880" height="64" rx="6" fill="var(--pine-soft)" stroke="var(--pine)"/>
+      <text class="svg-h" x="80" y="130" fill="var(--ink)" font-size="16">Personal / Family Agent Core</text>
+      <text x="80" y="154" fill="var(--ink-2)" font-size="13">Identity · Goal · Memory Manager · Persona · Dialogue · Planner · Proactivity Engine · Skill Router</text>
+      <rect x="60" y="188" width="880" height="64" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+      <text class="svg-h" x="80" y="214" fill="var(--ink)" font-size="16">Travel Intelligence Engine</text>
+      <text x="80" y="238" fill="var(--ink-2)" font-size="13">Context Engine · Location（GPS / POI / 围栏 / 停留检测）· Multimodal（ASR / VLM / TTS）· Route · Explanation Planner</text>
+      <rect x="60" y="272" width="880" height="64" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+      <text class="svg-h" x="80" y="298" fill="var(--ink)" font-size="16">Agent Skills</text>
+      <text x="80" y="322" fill="var(--ink-2)" font-size="13">首发：Museum · CityWalk · History · Literature · Study · Navigation · Family · Vision　后续：Food · Booking · Translation · Emergency</text>
+      <rect x="60" y="356" width="880" height="64" rx="6" fill="var(--pre-fill)" stroke="var(--line)"/>
+      <text class="svg-h" x="80" y="382" fill="var(--ink)" font-size="16">Knowledge &amp; Memory Layer</text>
+      <text x="80" y="406" fill="var(--ink-2)" font-size="13">World Model（旅行知识图谱 + RAG + Evidence）× Me / Family Model（四层记忆 · Vector + SQL + Event Store）</text>
+    </g>
+    <g class="svg-t" font-size="12" fill="var(--ink-3)">
+      <text x="20" y="54" transform="rotate(-90 20 54)" text-anchor="end">越往上越难复制</text>
+      <text x="20" y="390" transform="rotate(-90 20 390)" text-anchor="start">底层能力趋于商品化</text>
+    </g>
+  </svg>
+  </div>
+  <h3>技术原则</h3>
+  <ul>
+    <li><b>Model Router</b>：不绑定单一模型。意图识别用低成本模型，普通问答用中型模型，深度解释规划用强推理模型，图像用 VLM，独立 Embedding，ASR + TTS 分离——控制 Quality × Latency × Cost。</li>
+    <li><b>Smartphone Native</b>：只依赖手机的 GPS、相机、麦克风、耳机、地图与云端模型；不铺信标、不依赖场馆改造、不依赖官方二维码、不驻场。</li>
+    <li><b>核心实体</b>：User · FamilyUnit · ChildProfile · Trip · Journey · LocationEvent · POI · Exhibit · Question · Interaction · Preference · Memory · LearningTopic · KnowledgeNode · Task · Reward · Partner · Report。核心数据链：User / FamilyUnit → Journey → LocationEvent → Interaction → Distillation → Preference。</li>
+    <li><b>新场景复制标准</b>：每新增一个场景，只替换场景知识、点位路线、任务内容和服务规则，不重新开发产品。</li>
+  </ul>
+  <h3>载体决策：小程序首发，架构 App-ready</h3>
+  <p>这是几份企划分歧最大的一点，V1.0 显式合并而不是择一：</p>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>Phase 1 · 微信小程序</th><th>Phase 2 · 独立 App</th></tr></thead>
+    <tbody>
+      <tr><td>为什么</td><td>旅游是线下即时触发场景，检票口扫码的转化远高于下载几百兆的 App；微信传播、家庭群分享成本低；适合低频高价值场景</td><td>后台持续定位、长时间语音陪伴、耳机模式、更强主动唤醒、多日旅行、穿戴设备、长期 agent 成为核心体验时</td></tr>
+      <tr><td>承担</td><td>获客、个人 / 家庭档案、行前规划、同游 / 研学任务、地图、拍照识物、现场问答、行程记录、旅行记忆、分享裂变</td><td>不是"小程序放大版"，而是建立在长期记忆、多城市覆盖、个人 / 家庭旅行档案已形成之后</td></tr>
+      <tr><td>衔接</td><td>游后手账引导关注服务号，沉淀个人记忆档案</td><td>按留存数据与复杂能力需求评估时机</td></tr>
+    </tbody>
+  </table></div>
+  <p>青少年主线以个人手机为核心终端；亲子模式下以家长手机作为主账户与主要终端，儿童不必单独持机。两种模式共用同一账号体系与记忆底座。</p>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2><span class="n">10</span>商业模式</h2>
+  <p class="lead">V1.2 的商业化不再只问“家庭是否愿意为研学付费”，而采用与三类人群匹配的双层收入结构：青少年主线追求低门槛、高频、跨城与传播；亲子版承接寒暑假的高价值付费；其他游客以轻导览自然转化。</p>
+
+  <h3>C 端：一核三模的分层付费</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>产品层</th><th>主要用户</th><th>价值与权益</th><th>价格策略</th></tr></thead>
+    <tbody>
+      <tr><td>免费体验</td><td>全部用户</td><td>每个场景前 2–3 个核心节点、少量 AI 对话、基础地图与旅行记忆卡</td><td>免费，目标是先让用户“跟旅伴走起来”</td></tr>
+      <tr><td>同游 Pass</td><td>青少年 / 青年学生</td><td>完整路线、连续语音 / 对话、更高问答额度、跨场景记忆、文创兑换资格</td><td>低价单场 / 日卡 / 城市卡，降低付费门槛</td></tr>
+      <tr><td>亲子研学包</td><td>K12 家庭</td><td>分龄讲解、互动任务、亲子协作、游后研学报告 / 作文素材、家庭记忆</td><td>单场景中等客单，寒暑假重点销售</td></tr>
+      <tr><td>城市 / 年度会员</td><td>高频跨城用户与家庭</td><td>多城市权益、长期记忆、更高额度、年度旅行报告、主题路线优先体验</td><td>待真实复游与留存数据确定</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>B 端：O2O 合作网络，而不是广告网络</h3>
+  <p>线下合作商户、青年旅舍、酒店、文创店和本地学生大使不是“媒体位”，而是 AI旅伴的本地服务节点。平台给合作方带来精准客流与转化，合作方则承担扫码引导、礼品 / 文创兑换、轻咨询与品牌露出。收入可来自效果分佣、文创导购分成、联名路线与联合权益，但<strong>商业合作不能改变 Agent 的知识结论、路线推荐与内容中立性</strong>。</p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>收入来源</th><th>阶段</th><th>原则</th></tr></thead>
+    <tbody>
+      <tr><td>同游 Pass / 低价会员</td><td>首发</td><td>青少年主线的直接收入，价格不能成为首次体验门槛</td></tr>
+      <tr><td>亲子研学包</td><td>首发</td><td>寒暑假高价值产品，家长为成果与省心付费</td></tr>
+      <tr><td>文创 / 礼品兑换与导购分成</td><td>首发可试验</td><td>只在完成路线或行后出现，不把讲解变成带货</td></tr>
+      <tr><td>本地合作点效果分佣</td><td>首发可试验</td><td>按有效激活、完成路线或核销结算，不养重型线下团队</td></tr>
+      <tr><td>票务 / 活动 / 酒店等交易佣金</td><td>成熟期</td><td>用户信任形成之后再接入，不把 MVP 做成 OTA</td></tr>
+      <tr><td>B2B2C / 内容 IP</td><td>成熟期</td><td>向城市文旅、场馆、研学机构输出 Agent Skill 与内容能力</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <h2><span class="n">11</span>增长与获客：O2O 双轮驱动</h2>
+  <p class="lead">AI旅伴是一款线上 Agent 产品，但旅游发生在线下空间。V1.2 因此采用轻量 O2O：线上负责种草、决策与复购；线下合作点负责“最后 100 米”的发现、扫码、体验引导与权益核销。我们不自建直营网点、不铺重资产设备。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 1000 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AI旅伴 O2O 获客双飞轮">
+      <defs><marker id="o2oarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"/></marker></defs>
+      <g class="svg-h" fill="var(--ink)" font-size="20"><text x="40" y="38">O2O 双飞轮</text></g>
+      <g class="svg-t" font-size="14">
+        <rect x="40" y="82" width="410" height="210" rx="10" fill="var(--pre-fill)" stroke="var(--line)"/>
+        <text x="65" y="115" fill="var(--ink)" font-weight="700" font-size="17">ONLINE｜线上种草与复购</text>
+        <text x="65" y="148" fill="var(--ink-2)">小红书：路线攻略 / Citywalk / 博物馆内容</text>
+        <text x="65" y="178" fill="var(--ink-2)">微信视频号：短视频故事 / 使用演示 / UGC</text>
+        <text x="65" y="208" fill="var(--ink-2)">公众号：深度攻略 / 城市主题 / 搜索沉淀</text>
+        <text x="65" y="238" fill="var(--ink-2)">朋友圈 / 私域：旅行记忆卡 / 研学报告裂变</text>
+        <text x="65" y="268" fill="var(--pine)" font-weight="700">目标：出发前就进入用户的“旅行决策时刻”</text>
+
+        <rect x="550" y="82" width="410" height="210" rx="10" fill="var(--mid-fill)" stroke="var(--line)"/>
+        <text x="575" y="115" fill="var(--ink)" font-weight="700" font-size="17">OFFLINE｜本地服务点与最后100米</text>
+        <text x="575" y="148" fill="var(--ink-2)">兼职学生 / 校园大使：扫码引导、使用示范</text>
+        <text x="575" y="178" fill="var(--ink-2)">景区周边商户：二维码、文创 / 礼品兑换</text>
+        <text x="575" y="208" fill="var(--ink-2)">青旅 / 酒店 / 民宿：住店增值权益与分销码</text>
+        <text x="575" y="238" fill="var(--ink-2)">本地文创 / 咖啡店：完成路线后的核销与回流</text>
+        <text x="575" y="268" fill="var(--ochre)" font-weight="700">目标：降低现场首次使用门槛，不做重型驻场</text>
+
+        <path d="M450 155 L545 155" stroke="var(--ink-3)" stroke-width="1.6" fill="none" marker-end="url(#o2oarr)"/>
+        <path d="M550 235 C500 330, 460 330, 405 275" stroke="var(--ink-3)" stroke-width="1.6" fill="none" marker-end="url(#o2oarr)"/>
+        <text x="470" y="143" fill="var(--ink-3)" font-size="12">到场激活</text>
+        <text x="455" y="338" fill="var(--ink-3)" font-size="12">游记 / 记忆卡 / UGC 回流线上</text>
+      </g>
+    </svg>
+  </div>
+
+  <h3>线上渠道：不做泛流量，抢占“出行决策时刻”</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>渠道</th><th>青少年内容</th><th>亲子内容</th><th>转化入口</th></tr></thead>
+    <tbody>
+      <tr><td>小红书</td><td>“南京一日特种兵”“夫子庙夜游 Citywalk”“南博 18 件别错过”</td><td>“带娃逛南博怎么不累”“夫子庙别只吃小吃”</td><td>免费路线 / 场景体验码</td></tr>
+      <tr><td>微信视频号</td><td>1 分钟场景故事、AI 对话实录、真实路线体验</td><td>亲子互动片段、孩子提问高光、研学成果</td><td>小程序直达</td></tr>
+      <tr><td>公众号</td><td>城市深度路线、主题知识、跨城系列</td><td>研学方法、分龄路线、假期专题</td><td>搜索长尾 + 私域沉淀</td></tr>
+      <tr><td>朋友圈 / 社群</td><td>个性化旅行记忆卡、路线徽章</td><td>研学手账、游记作文素材、家庭旅行报告</td><td>分享即复用路线</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>线下服务点：本地兼职学生 + 商户合作点</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>类型</th><th>角色</th><th>现场动作</th><th>结算方式</th><th>边界</th></tr></thead>
+    <tbody>
+      <tr><td>学生大使 / 兼职伙伴</td><td>最接近首选用户的人，也是低成本口碑节点</td><td>景区外围、地铁口、青年旅舍等合规位置示范使用、引导扫码、收集反馈；平日在校园 / 社群做内容</td><td>有效激活 + 首次完成路线 + 内容贡献的组合激励</td><td>不得冒充景区工作人员或“官方导游”</td></tr>
+      <tr><td>景区周边商户</td><td>服务点 / 权益核销点</td><td>摆放统一小物料；完成路线后兑换明信片、徽章、文创折扣、饮品等</td><td>平台导流 + 商户让利 + 成交 / 核销分佣</td><td>不能影响 Agent 的路线和内容判断</td></tr>
+      <tr><td>青旅 / 酒店 / 民宿</td><td>入住即触达的高意向渠道</td><td>提供“南京 AI旅伴”作为住店增值服务</td><td>专属分销码 / 联名城市包</td><td>不要求前台承担复杂售后</td></tr>
+      <tr><td>文创 / 咖啡合作点</td><td>旅程结束后的仪式感节点</td><td>核销徽章、打印 / 领取纪念卡、二次消费</td><td>核销成本 + 导购分成</td><td>只在行后出现，避免“边讲边带货”</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>O2O 运营原则：轻资产，而不是“线下门店化”</h3>
+  <ul>
+    <li><b>平台不租门店、不养固定驻场团队。</b>线下节点全部合作制、兼职制、效果结算。</li>
+    <li><b>统一物料。</b>二维码、桌牌、徽章、兑换券、使用说明全部模板化，一套城市物料包可快速复制。</li>
+    <li><b>统一 Partner ID。</b>每个学生大使 / 商户都有独立渠道码，可追踪激活、完成路线、核销与复购。</li>
+    <li><b>线上账户才是资产。</b>扫码只是入口，真正沉淀的是用户账号、旅行记忆、偏好与下一次出行关系。</li>
+    <li><b>公共文化场馆内保持克制。</b>没有馆方许可，不在馆内设置商业点位；南京博物院 Demo 重点依赖馆外触达与线上行前种草。</li>
+  </ul>
+
+  <h3>增长闭环</h3>
+  <pre>线上种草 → 到场扫码 / 服务点激活 → AI旅伴完成一段真实体验
+       ↓
+形成旅行记忆 / 研学成果 → 文创或礼品核销 → 分享到朋友圈 / 小红书
+       ↓
+新用户看到内容 → 复制同款路线 → 再次进入线上</pre>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <h2><span class="n">12</span>MVP 范围与验证</h2>
+  <div class="two">
+    <div class="pair"><h3>首发必须具备</h3><p>微信授权与个人档案 / Family Unit；年龄段、同游 / 亲子 / 轻导览模式与讲解偏好；夫子庙一条完整主题路线；南博一条精选主题路线；场景化讲解（同游版 / 孩子版两种口吻）与连续追问；亲子任务与跳过机制；基础路线调整；游后旅行记忆卡；个人长期记忆基础版 + 亲子 Family Unit 扩展；位置与轨迹授权管理；内容纠错与安全反馈；运营后台（点位、知识、任务、路线、版本管理）。</p></div>
+    <div class="pair"><h3>首发暂不做</h3><p>全国景区覆盖；自研室内定位硬件；复杂 AR 实景游戏；社交排行榜与陌生人社区；自由行、酒店、门票等重交易；过多虚拟形象与养成系统；以"孩子学了多久"为核心的高压学习体系。</p></div>
+  </div>
+  <h3>六个核心假设</h3>
+  <ol class="open">
+    <li><strong>H1 互动意愿</strong><span>用户（青少年与家庭）愿不愿意一路和 agent 互动？</span></li>
+    <li><strong>H2 主动提问</strong><span>孩子是否愿意主动问问题，而不只是听？</span></li>
+    <li><strong>H3 场景感知</strong><span>Context-aware 触发是否明显优于传统导览？</span></li>
+    <li><strong>H4 个性化解释</strong><span>按孩子讲的讲解是否明显优于统一讲解？</span></li>
+    <li><strong>H5 记忆价值</strong><span>长期记忆是否让第二次旅行体验明显提高？——邀请家庭体验第二个场景，验证他们是否明确感到"它记得我们上次喜欢什么"。</span></li>
+    <li><strong>H6 付费意愿</strong><span>青少年是否接受低价会员与文创兑换，家庭是否愿为研学包付费？</span></li>
+  </ol>
+  <p style="margin-top:18px">最小验证闭环：用户进入场景 → 完成一次 agent 陪伴游览 → 生成旅行记忆 → 下一次感受到 agent 更懂自己。亲子模式下，该闭环以 Family Unit 运行。如果只有讲解和问答，没有游后记忆与再次使用价值，产品仍只是一个导览工具。</p>
+  <h3>指标体系</h3>
+  <p>北极星指标不是 DAU，而是 <b>Meaningful Exploration Minutes</b>：用户与 agent 共同完成的有效探索时长。旅游是低频产品，第二场景使用率和跨次记忆价值比日活更能说明问题。</p>
+  <div class="tbl"><table>
+    <thead><tr><th>维度</th><th>指标</th></tr></thead>
+    <tbody>
+      <tr><td>场景体验</td><td>路线启动完成率；完成率与主动缩短率；点位平均停留与跳过；孩子有效提问率；亲子任务参与率；中途退出原因；定位 / 识别纠错率</td></tr>
+      <tr><td>用户价值</td><td>青少年：复用路线、分享与跨城使用意愿；亲子：家长满意度、"比自己做攻略省心"、"孩子更愿意参与"；全体：记忆卡查看 / 保存率与 AI 推断纠正率</td></tr>
+      <tr><td>记忆</td><td>偏好新增量；语义足迹完整度；跨次记忆被再次调用的比例；因记忆而提升的建议接受率</td></tr>
+      <tr><td>商业</td><td>免费到同游 Pass / 研学包转化率；会员转化；Partner 激活成本；线下扫码到完成路线转化率；礼品 / 文创核销率；单付费用户模型成本与获客回收周期</td></tr>
+      <tr><td>长期</td><td>90 / 180 天复游率；第二场景使用率；研学报告分享率与分享获客转化率</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section id="s13">
+  <h2><span class="n">13</span>路线图与团队</h2>
+  <div class="phase"><b>0–3 个月 · 场景验证</b><span>产品原型与品牌基础；青少年同游模式为主线，亲子模式同步可切换；两个场景各一条路线打透；小程序 MVP 上线；招募首批学生大使与 5–10 个周边合作点；验证讲解、轨迹、记忆、扫码激活与游后回流闭环。</span></div>
+  <div class="phase"><b>3–6 个月 · 付费验证</b><span>上线同游 Pass、亲子研学包与基础会员；扩大高校 / 青旅 / 商户 Partner 网络；优化 AI 成本与响应速度；验证淡季青少年使用、寒暑假亲子转化、O2O 激活成本和分享复购。</span></div>
+  <div class="phase"><b>6–12 个月 · 记忆与复制</b><span>扩展南京其他文化场景（明孝陵、总统府、城墙、六朝博物馆），形成"南京城市 agent"；选第二座城市验证复制能力；推出跨场景兴趣线与年度成长档案；标准化新场景接入流程；按留存评估独立 App。</span></div>
+  <div class="phase"><b>12 个月后</b><span>华东文化旅行（苏州、杭州、上海、扬州）→ 中国文化旅行 agent（北京、西安、洛阳、山西、成都）。不是一个一个做"景点 App"，而是持续扩展 Travel World Model 和 Skill Coverage。</span></div>
+  <h3>团队配置（精干）</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>内部核心</th><th>外部合作</th></tr></thead>
+    <tbody>
+      <tr><td>产品负责人（产品规划、家庭研究、场景体验）</td><td>历史与博物内容专家审校</td></tr>
+      <tr><td>内容与研学负责人（主题设计、分龄内容、事实审校）</td><td>儿童教育心理与无障碍体验顾问</td></tr>
+      <tr><td>AI / 后端工程（模型编排、知识库、记忆与数据权限）</td><td>插画、声音与主题视觉制作</td></tr>
+      <tr><td>小程序前端工程（用户端与管理端）</td><td>商标、隐私与未成年人保护合规评估</td></tr>
+      <tr><td>视觉与体验设计（品牌、路线、任务、游后作品）</td><td></td></tr>
+      <tr><td>增长与 O2O 运营（学生大使、商户伙伴、内容矩阵、渠道结算、场景维护）</td><td></td></tr>
+    </tbody>
+  </table></div>
+  <p>工程侧可基于开源 agent 框架结合小程序前端快速组装验证，不建议首发阶段自建大型线下团队或重资产内容制作体系。</p>
+</section>
+
+<!-- ============ 14 ============ -->
+<section id="s14">
+  <h2><span class="n">14</span>风险与应对</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>风险</th><th>表现</th><th>应对</th></tr></thead>
+    <tbody>
+      <tr><td>变成普通 AI 讲解器</td><td>有问答，没有持续关系</td><td>把长期记忆、二次使用和游后成果纳入 MVP 必做项</td></tr>
+      <tr><td>AI 内容出错</td><td>文物、历史、路线信息不准</td><td>Evidence-first、人工审校、来源管理、纠错下线</td></tr>
+      <tr><td>室内定位不可靠</td><td>自动触发错乱、信任崩塌</td><td>主动确认 + 拍照辅助 + 编号；不承诺精准室内定位；命中率低于八成改为"问一句"为主</td></tr>
+      <tr><td>儿童隐私与家长顾虑</td><td>位置、语音、照片、轨迹敏感</td><td>家长管理、分项授权、最小采集、可删除、默认不公开、上线前合规评估</td></tr>
+      <tr><td>旅游低频导致流失</td><td>用完一次不再打开</td><td>跨场景兴趣延续、家庭成长档案、城市内容扩展、服务号沉淀</td></tr>
+      <tr><td>内容生产成本过高</td><td>每个景区都要重新定制</td><td>结构化知识模板、任务模板、标准化接入后台</td></tr>
+      <tr><td>AI 成本失控</td><td>长对话、语音与图像调用过多</td><td>Model Router 分层、缓存标准内容、额度设计、按价值调用</td></tr>
+      <tr><td>家长使用负担过重</td><td>注册复杂、全程盯屏、手机没电</td><td>快速开始、少配置、音频优先、任务轻量、省电模式</td></tr>
+      <tr><td>教育价值形式化</td><td>变成答题打卡</td><td>强调观察、提问、表达、关联；不以题量和分数评价孩子</td></tr>
+      <tr><td>受众扩散稀释深度</td><td>三类人群三套体验，哪一套都不够好</td><td>一核三模；MVP 以青少年同游版为主线，亲子版为假期模式，其他游客不投专项</td></tr>
+      <tr><td>O2O 运营变重</td><td>服务点管理、兼职人员、结算与投诉把线上公司拖成线下运营公司</td><td>Partner 制而非直营网点：统一渠道码、标准物料包、效果结算、城市级 Partner 管理；无授权不进馆内布点</td></tr>
+      <tr><td>未成年青少年独立使用</td><td>位置权限、消费、夜间出行与陌生线下人员接触带来额外风险</td><td>按年龄分层权限；未成年人位置 / 消费 / 夜间功能采用更严格规则；线下学生大使只做产品引导，不组织结伴出游、不提供看护</td></tr>
+      <tr><td>品牌与资质</td><td>名称歧义、"官方"字眼侵权、被视为持证导游</td><td>主品牌"旅伴"、名称检索、独立知识陪伴产品定位、明确"AI 服务非持证导游"</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section id="s15">
+  <h2><span class="n">15</span>下一步：四份技术规格</h2>
+  <p class="lead">本企划之后，应立即进入四份核心技术规格，而不是继续扩充宏观概念。</p>
+  <ol class="open">
+    <li><strong>《Personal / Family Memory System 技术规格 V1.0》</strong><span>User / FamilyUnit Schema、Child Profile、四层记忆、写入策略、检索、蒸馏、语义足迹、用户查看 / 修改 / 删除。这是最先要拆的一份：位置轨迹怎样写入、什么能成为长期记忆、家庭与孩子的记忆如何分权、第二次旅行怎样检索调用，直接决定这款产品是真 agent，还是披着 agent 外衣的智能导览。</span></li>
+    <li><strong>《Location &amp; Context Engine 技术规格 V1.0》</strong><span>GPS 采样、Geofence、POI、停留检测、室内上下文、视觉锚点、Context State、Journey 状态机。</span></li>
+    <li><strong>《Parent-Child Learning Agent Policy V1.0》</strong><span>年龄分层、讲解颗粒度、苏格拉底式提问、问题链、学龄适配、家长 / 孩子双模式、什么时候说、什么时候不说。</span></li>
+    <li><strong>《Nanjing Dual-Demo MVP PRD V1.0》</strong><span>南博 18 个锚点 + 夫子庙 12 个锚点，形成 30 个精调场景 × 统一 Agent Core × 一套 Memory System × 两种 Context Mode——第一个可以真正进入 AI Coding 和用户测试的版本。</span></li>
+  </ol>
+  <h3>十条战略原则</h3>
+  <div class="tbl"><table>
+    <tbody>
+      <tr><td>P01 Person First, Place Second</td><td>先理解人，再理解地点</td><td>P06 Semantic Footprint Over Raw Track</td><td>长期保留意义，不保留坐标噪声</td></tr>
+      <tr><td>P02 Memory First</td><td>每一次体验都让下一次更聪明</td><td>P07 Smartphone Native</td><td>先利用用户已有的设备</td></tr>
+      <tr><td>P03 Context Before Content</td><td>先判断场景，再决定输出</td><td>P08 Asset-light First</td><td>没有必要，不增加现场硬件与重运营</td></tr>
+      <tr><td>P04 Conversation Over Playback</td><td>优先对话，不做播放器</td><td>P09 One Agent, Many Skills</td><td>不为每个景区重新造产品</td></tr>
+      <tr><td>P05 Question Before Answer</td><td>面对孩子，先激发思考</td><td>P10 Relationship Is the Product</td><td>卖的不是景点知识，而是一个长期懂我的 agent</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quote">第一次，它告诉你这里是什么。第二次，它开始知道你喜欢什么。第五次，它知道该给你讲什么。第十次，它在你开口之前说："上次你们在南京对古代建筑特别感兴趣，这次去山西，我已经替你们挑好了几座真正值得看的。"</div>
+</section>
+
+<!-- ============ appendix ============ -->
+<section id="appx">
+  <h2><span class="n">附</span>来源整合与裁决</h2>
+  <p class="lead">本企划整合五份材料：DeepSeek 命名稿、Gemini 场景与获客稿、Kimi 完整企划稿、ChatGPT《产品战略与总体架构 V1.0》，以及《能力地图与记忆模型 v0.2》。共同结论直接采纳；存在分歧的，裁决如下。</p>
+  <div class="tbl"><table>
+    <thead><tr><th>议题</th><th>各稿立场</th><th>V1.0 裁决</th></tr></thead>
+    <tbody>
+      <tr><td>主品牌</td><td>DeepSeek：随身向导 / 旅行管家；Gemini：知行少年等古风名；Kimi / ChatGPT：旅伴 / AI旅伴</td><td>旅伴 / AI旅伴；"知行"与现有产品线冲突，不采用；"书童"保留为孩子端人设</td></tr>
+      <tr><td>载体</td><td>Gemini / Kimi：小程序先行；能力地图 v0.2：行中主体验建议 App；ChatGPT：小程序 + App-ready</td><td>小程序首发、架构 App-ready；家长单机模型降低了小程序限制</td></tr>
+      <tr><td>核心年龄</td><td>Kimi：6–15 核心 7–12；ChatGPT：8–15</td><td>MVP 聚焦 7–12，覆盖 6–15</td></tr>
+      <tr><td>室内定位</td><td>Gemini：拍照识物做 C 位入口；Kimi：用户确认优先、不承诺精准定位；v0.2：设命中率门槛</td><td>"拍一下 / 问一下"双入口；不承诺精准定位；命中率低于八成则"问一句"为主</td></tr>
+      <tr><td>轨迹是否进长期记忆</td><td>v0.1：不进；用户决定：进；ChatGPT / Kimi：进但语义化、分项授权</td><td>进长期记忆，但沉淀语义足迹而非原始坐标；Usage Mode 采集；未成年人合规前置</td></tr>
+      <tr><td>定价</td><td>Gemini：19.9–29.9 元 / 场、68 元 / 季；Kimi：免费 + 单次 + 会员结构；ChatGPT：作为实验起点</td><td>采用三层结构，Gemini 数字为实验起点而非最终定价</td></tr>
+      <tr><td>MVP 验证重点</td><td>Kimi：三个问题；ChatGPT：六个假设 + 北极星指标</td><td>六个假设 + Meaningful Exploration Minutes；Kimi 的"第二场景使用率"纳入长期指标</td></tr>
+      <tr><td>受众优先级</td><td>v1.0 各稿：亲子研学家庭首发</td><td>v1.1 用户决定：青少年首选、K12 家庭其次、其他游客再次；依据是旅游潮汐与 AI 接受度的现场观察；产品结构改为一核三模</td></tr>
+      <tr><td>获客路径</td><td>v1.0：纯线上，不在景区立易拉宝</td><td>v1.1：线上 + O2O 服务点（校园大使、商户合作点）；边界为"分销不自营"、馆内零商业引导</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>Personal Travel Agent · 产品战略与总体架构 V1.2 · 2026-10-25 · 本版核心修订：青少年 / 青年学生成为全年主线，K12 家庭成为寒暑假增强模式；个人记忆为核心、Family Unit 为扩展；O2O 从“渠道补充”升级为轻资产 GTM 体系；线下采用学生大使 + 商户 Partner，不自建直营网点。</footer>
+
+</div>
+</body>
+</html>

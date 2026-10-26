@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>旅伴 Agent · 能力地图与记忆模型 v0.2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F3F5F2; --paper-2:#E9EDE8; --ink:#1C2B3A; --ink-2:#4A5A6A; --ink-3:#8A96A2;
+  --line:#CDD5D0; --pine:#2F7F6F; --pine-soft:#D9EAE5; --ochre:#C8763B; --ochre-soft:#F4E3D5;
+  --river:#BFD6E6; --river-deep:#5E8FB3;
+  --pre-fill:#E6EEF2; --mid-fill:#F4E3D5; --post-fill:#E3ECE4;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#141C24; --paper-2:#1C2630; --ink:#E8ECEE; --ink-2:#B3BDC6; --ink-3:#7E8A95;
+    --line:#2E3A46; --pine:#6FC3B0; --pine-soft:#1E3A36; --ochre:#E39A66; --ochre-soft:#3B2A1E;
+    --river:#243B4F; --river-deep:#6FA6CF;
+    --pre-fill:#1F2E3A; --mid-fill:#3B2A1E; --post-fill:#1F3028;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#141C24; --paper-2:#1C2630; --ink:#E8ECEE; --ink-2:#B3BDC6; --ink-3:#7E8A95;
+  --line:#2E3A46; --pine:#6FC3B0; --pine-soft:#1E3A36; --ochre:#E39A66; --ochre-soft:#3B2A1E;
+  --river:#243B4F; --river-deep:#6FA6CF;
+  --pre-fill:#1F2E3A; --mid-fill:#3B2A1E; --post-fill:#1F3028;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px;line-height:1.8;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:"Noto Serif SC","Songti SC","SimSun",serif;font-weight:700;line-height:1.3;margin:0}
+.wrap{max-width:1040px;margin:0 auto;padding:56px 24px 96px}
+header{margin-bottom:72px}
+.version{color:var(--ink-3);font-size:14px;margin-bottom:28px}
+h1{font-size:clamp(34px,6vw,58px);letter-spacing:.02em}
+h1 small{display:block;font-size:.42em;font-weight:500;color:var(--ink-2);margin-top:10px;letter-spacing:.06em}
+.thesis{max-width:34em;margin-top:28px;font-size:18px;color:var(--ink-2)}
+section{margin-bottom:80px}
+h2{font-size:26px;margin-bottom:8px;padding-bottom:10px;border-bottom:2px solid var(--ink)}
+.lead{color:var(--ink-2);max-width:36em;margin:14px 0 28px}
+p{margin:0 0 14px;max-width:38em}
+.figure{overflow-x:auto;border:1px solid var(--line);background:var(--paper-2);border-radius:6px;padding:12px}
+.figure svg{display:block;min-width:720px;width:100%;height:auto}
+.caption{font-size:14px;color:var(--ink-3);margin-top:10px}
+.svg-t{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+.svg-h{font-family:"Noto Serif SC","Songti SC",serif;font-weight:700}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:28px 40px}
+@media (max-width:720px){.two{grid-template-columns:1fr}}
+.pair h3{font-size:17px;margin-bottom:6px}
+.pair p{font-size:15px;color:var(--ink-2)}
+table{border-collapse:collapse;width:100%;font-size:15px;margin-top:8px}
+th,td{text-align:left;vertical-align:top;padding:12px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--ink-2);font-weight:500;font-size:13.5px}
+td:first-child{white-space:nowrap;font-weight:500}
+.tbl{overflow-x:auto}
+.rule{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-top:1px dashed var(--line)}
+.rule:first-of-type{border-top:0}
+.rule b{flex:0 0 7.5em;color:var(--pine)}
+.rule span{color:var(--ink-2);font-size:15px}
+.open{counter-reset:q;list-style:none;padding:0;margin:0}
+.open li{padding:14px 0 14px 2.4em;position:relative;border-bottom:1px solid var(--line);font-size:15.5px}
+.open li::before{counter-increment:q;content:counter(q);position:absolute;left:0;top:14px;width:1.6em;height:1.6em;border:1.5px solid var(--ochre);border-radius:50%;color:var(--ochre);font-size:13px;display:grid;place-items:center;font-weight:500}
+.open li strong{display:block;color:var(--ink);margin-bottom:2px}
+.open li span{color:var(--ink-2)}
+footer{color:var(--ink-3);font-size:13.5px;border-top:1px solid var(--line);padding-top:20px}
+@media (prefers-reduced-motion:no-preference){
+  .flow{stroke-dasharray:6 6;animation:drift 6s linear infinite}
+  @keyframes drift{to{stroke-dashoffset:-120}}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="version">旅伴 Agent（暂定名）· 能力地图与记忆模型 · v0.2 · 2026-10-25 · 已确定首发场景、受众与模式</div>
+  <h1>从"导"到"伴"<small>一个随身的、有记忆的、会主动的旅行 agent</small></h1>
+  <p class="thesis">导游的工作在景点门口开始、在景点门口结束。伴的工作从"你想去哪"开始，到"下次我们去哪"才告一段落——而连接这条线的，是记忆。</p>
+</header>
+
+<section>
+  <h2>核心命题</h2>
+  <p class="lead">产品的差异不在"会讲解"，而在"越来越懂你"。讲解是能力，懂你是关系；前者可以被任何接入大模型的地图或 OTA 复制，后者只有持续陪伴才能积累。</p>
+  <div class="two">
+    <div class="pair"><h3>导游式产品</h3><p>以景点为中心，信息单向分发；每次打开都是陌生人；价值在行中、随行程结束而归零。</p></div>
+    <div class="pair"><h3>伴游式 agent</h3><p>以人为中心，记忆持续累积；每次打开都接着上次；价值跨越行前、行中、行后，随次数递增。</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>首发场景与受众</h2>
+  <p class="lead">受众定为亲子研学家庭，场景定为一室内一室外：南京博物院与夫子庙。两个 demo 的差异足够大，正好把定位、讲解触发、动线三件事各验证一遍。模式为纯线上轻资产——不布设备、不驻场，内容是唯一的资产。</p>
+  <div class="two">
+    <div class="pair"><h3>为什么是亲子研学家庭</h3><p>研学自带任务感，孩子是记忆最好的载体，家长是明确的付费方；而且"孩子一年年长大"本身就是记忆层最天然的时间轴——这是别的客群给不了的粘性。夫子庙的科举文化、博物院的历史脉络，也与现有初中语文、道法知识库天然衔接。</p></div>
+    <div class="pair"><h3>轻资产意味着什么</h3><p>室内不能依赖自建信标，定位要靠手机本身：摄像头识别展品、楼层平面图、用户一句确认。内容库、研学任务库和记忆模型是全部家当，demo 阶段要把这三样做深，而不是把场景做多。</p></div>
+  </div>
+  <div class="tbl">
+  <table>
+    <thead><tr><th></th><th>南京博物院（室内）</th><th>夫子庙（室外）</th></tr></thead>
+    <tbody>
+      <tr><td>定位方式</td><td>拍展品 / 展牌的视觉识别 + 展厅级手动确认 + 平面图</td><td>GPS + POI 围栏（文庙、江南贡院、乌衣巷、秦淮河）</td></tr>
+      <tr><td>讲解触发</td><td>站到展品前、拍一下、或问一句</td><td>进入节点围栏，或看见某块牌坊、某个招牌</td></tr>
+      <tr><td>动线形态</td><td>展厅序列，分叉少，可按年级裁出一条线</td><td>街巷线性 + 散点，白天与夜游两套节奏</td></tr>
+      <tr><td>研学抓手</td><td>历史脉络（六朝到民国）、文物"问题链"</td><td>科举与读书人、市井与民俗、秦淮灯影</td></tr>
+      <tr><td>典型时长</td><td>2–3 小时，中途需要一次休息提醒</td><td>半天到一晚，吃饭是动线的一部分</td></tr>
+      <tr><td>最难的一点</td><td>玻璃反光、人流遮挡下的识别命中率</td><td>人多、信号漂移时的"该不该开口"</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3 style="font-size:17px;margin:28px 0 6px">研学任务是贯穿三段的第四条线</h3>
+  <p>行前和孩子一起领一个"问题"（而不是一份清单），行中围绕问题触发讲解与采集，行后把问题的答案、走过的足迹和孩子说过的话织成一份研学记录。它不是独立功能，而是让"伴"有目的性的那根线。</p>
+</section>
+
+<section>
+  <h2>能力地图</h2>
+  <p class="lead">三个阶段各有自己的能力簇，但都站在同一条"记忆之河"上：上游写入、下游读取，河越深，每一段的服务越准。</p>
+  <div class="figure">
+  <svg viewBox="0 0 1000 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="旅伴 agent 能力地图：行前、行中、行后三个阶段与贯穿其下的记忆层">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"/>
+      </marker>
+    </defs>
+
+    <!-- stage headers -->
+    <g class="svg-h" fill="var(--ink)" font-size="22">
+      <text x="40" y="40">行前</text>
+      <text x="370" y="40">行中</text>
+      <text x="700" y="40">行后</text>
+    </g>
+    <g class="svg-t" fill="var(--ink-3)" font-size="13">
+      <text x="92" y="40">一起决定去哪、怎么去</text>
+      <text x="422" y="40">在身边，而且在场</text>
+      <text x="752" y="40">把旅程变成记忆</text>
+    </g>
+
+    <!-- stage columns -->
+    <rect x="30" y="58" width="290" height="372" rx="8" fill="var(--pre-fill)" stroke="var(--line)"/>
+    <rect x="360" y="58" width="290" height="372" rx="8" fill="var(--mid-fill)" stroke="var(--ochre)" stroke-width="1.5"/>
+    <rect x="690" y="58" width="290" height="372" rx="8" fill="var(--post-fill)" stroke="var(--line)"/>
+
+    <!-- 行前 cards -->
+    <g class="svg-t" font-size="13.5">
+      <g>
+        <rect x="46" y="74" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="60" y="97" fill="var(--ink)" font-weight="700" font-size="15">意图理解</text>
+        <text x="60" y="118" fill="var(--ink-2)">和谁去、为什么去、几天、预算</text>
+        <text x="60" y="138" fill="var(--ink-2)">体力边界、不能吃的、怕的、烦的</text>
+      </g>
+      <g>
+        <rect x="46" y="162" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="60" y="185" fill="var(--ink)" font-weight="700" font-size="15">协同规划</text>
+        <text x="60" y="206" fill="var(--ink-2)">不输出"攻略"，而是一起定下来</text>
+        <text x="60" y="226" fill="var(--ink-2)">可改、可问为什么、可留白</text>
+      </g>
+      <g>
+        <rect x="46" y="250" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="60" y="273" fill="var(--ink)" font-weight="700" font-size="15">预期管理</text>
+        <text x="60" y="294" fill="var(--ink-2)">提前说清：哪里会排队、哪里会累</text>
+        <text x="60" y="314" fill="var(--ink-2)">哪里值得慢下来</text>
+      </g>
+      <g>
+        <rect x="46" y="338" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="60" y="361" fill="var(--ink)" font-weight="700" font-size="15">准备与预订</text>
+        <text x="60" y="382" fill="var(--ink-2)">清单、门票、预约、天气窗口</text>
+        <text x="60" y="402" fill="var(--ink-2)">需要人确认的，只做到"一键"前</text>
+      </g>
+    </g>
+
+    <!-- 行中 cards -->
+    <g class="svg-t" font-size="13.5">
+      <g>
+        <rect x="376" y="74" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="390" y="97" fill="var(--ink)" font-weight="700" font-size="15">随身讲解</text>
+        <text x="390" y="118" fill="var(--ink-2)">位置 + 镜头 + 语音，看见什么讲什么</text>
+        <text x="390" y="138" fill="var(--ink-2)">按你的兴趣讲，不是按词条讲</text>
+      </g>
+      <g>
+        <rect x="376" y="162" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="390" y="185" fill="var(--ink)" font-weight="700" font-size="15">动态调度</text>
+        <text x="390" y="206" fill="var(--ink-2)">排队、下雨、走不动了——改顺序</text>
+        <text x="390" y="226" fill="var(--ink-2)">改的是计划，不改的是目的</text>
+      </g>
+      <g>
+        <rect x="376" y="250" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--ochre)"/>
+        <text x="390" y="273" fill="var(--ink)" font-weight="700" font-size="15">主动在场</text>
+        <text x="390" y="294" fill="var(--ink-2)">到站提醒、该吃饭了、该休息了</text>
+        <text x="390" y="314" fill="var(--ink-2)">不打扰的前提下，先你一步想到</text>
+      </g>
+      <g>
+        <rect x="376" y="338" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="390" y="361" fill="var(--ink)" font-weight="700" font-size="15">采集与应急</text>
+        <text x="390" y="382" fill="var(--ink-2)">照片、随口一句、某个被打动的瞬间</text>
+        <text x="390" y="402" fill="var(--ink-2)">走失、生病、丢东西时的第一响应</text>
+      </g>
+    </g>
+
+    <!-- 行后 cards -->
+    <g class="svg-t" font-size="13.5">
+      <g>
+        <rect x="706" y="74" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="720" y="97" fill="var(--ink)" font-weight="700" font-size="15">旅程沉淀</text>
+        <text x="720" y="118" fill="var(--ink-2)">把碎片织成一篇有你口吻的游记</text>
+        <text x="720" y="138" fill="var(--ink-2)">可发、可存、可给家人看</text>
+      </g>
+      <g>
+        <rect x="706" y="162" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="720" y="185" fill="var(--ink)" font-weight="700" font-size="15">偏好更新</text>
+        <text x="720" y="206" fill="var(--ink-2)">这次学到了什么：喜欢慢、怕晒、</text>
+        <text x="720" y="226" fill="var(--ink-2)">对工业遗产比对古镇更有兴趣</text>
+      </g>
+      <g>
+        <rect x="706" y="250" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="720" y="273" fill="var(--ink)" font-weight="700" font-size="15">关系延续</text>
+        <text x="720" y="294" fill="var(--ink-2)">一年后的同一天："还记得吗"</text>
+        <text x="720" y="314" fill="var(--ink-2)">下次长假前，先你一步提议</text>
+      </g>
+      <g>
+        <rect x="706" y="338" width="258" height="78" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="720" y="361" fill="var(--ink)" font-weight="700" font-size="15">分享与回流</text>
+        <text x="720" y="382" fill="var(--ink-2)">游记里带着行程，看到的人可一键复用</text>
+        <text x="720" y="402" fill="var(--ink-2)">这是最自然的获客入口</text>
+      </g>
+    </g>
+
+    <!-- stage arrows -->
+    <g stroke="var(--ink-3)" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+      <path d="M322 244 L356 244"/>
+      <path d="M652 244 L686 244"/>
+    </g>
+
+    <!-- memory river -->
+    <path d="M30 470 C 200 450, 300 500, 500 480 S 800 455, 980 480 L980 540 C 800 520, 700 555, 500 540 S 200 515, 30 535 Z" fill="var(--river)"/>
+    <path class="flow" d="M30 505 C 200 485, 300 532, 500 510 S 800 490, 980 510" fill="none" stroke="var(--river-deep)" stroke-width="2"/>
+    <text class="svg-h" x="56" y="518" fill="var(--ink)" font-size="19">记忆层</text>
+    <g class="svg-t" font-size="13" fill="var(--ink-2)">
+      <text x="140" y="500">身份 · 偏好 · 旅程 · 瞬时</text>
+      <text x="140" y="521">行前读取偏好与历史，行中写入瞬时与旅程，行后把旅程蒸馏成偏好</text>
+    </g>
+
+    <!-- write/read arrows between columns and river -->
+    <g stroke="var(--river-deep)" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+      <path d="M175 470 L175 436"/>
+      <path d="M505 436 L505 476"/>
+      <path d="M835 436 L835 468"/>
+    </g>
+    <g class="svg-t" font-size="12" fill="var(--ink-3)">
+      <text x="184" y="458">读</text>
+      <text x="514" y="462">写</text>
+      <text x="844" y="458">蒸馏</text>
+    </g>
+
+    <!-- proactivity engine bar -->
+    <rect x="30" y="566" width="950" height="38" rx="6" fill="none" stroke="var(--pine)" stroke-dasharray="4 4"/>
+    <text class="svg-t" x="46" y="591" fill="var(--pine)" font-size="14" font-weight="700">主动性引擎</text>
+    <text class="svg-t" x="150" y="591" fill="var(--ink-2)" font-size="13">以时间、位置、天气、状态为触发，决定"此刻该不该开口、说什么"——它是三个阶段共用的底座，不属于任何一列</text>
+  </svg>
+  </div>
+  <p class="caption">行中一列加粗描边，因为它是最难做、也最像"伴"的部分；行前和行后分别是记忆的来源与去处。</p>
+</section>
+
+<section>
+  <h2>记忆模型</h2>
+  <p class="lead">记忆分四层，稳定度递减、时效性递增。设计的关键不在存什么，而在"什么能往上升"：瞬时的碎片经过旅程，被蒸馏成偏好；偏好被多次验证，才沉入身份。</p>
+  <div class="figure">
+  <svg viewBox="0 0 1000 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="四层记忆模型：身份、偏好、旅程、瞬时，从下往上时效性递增">
+    <defs>
+      <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--pine)"/>
+      </marker>
+    </defs>
+    <!-- layers (widest at bottom) -->
+    <g class="svg-t">
+      <rect x="40" y="300" width="920" height="70" rx="6" fill="var(--pre-fill)" stroke="var(--line)"/>
+      <text class="svg-h" x="60" y="330" fill="var(--ink)" font-size="18">身份层</text>
+      <text x="60" y="354" fill="var(--ink-2)" font-size="13">以家庭为单位：家长 + 孩子（年级、学到哪）· 体力与节奏基线 · 饮食禁忌 · 几乎不变</text>
+      <text x="880" y="340" fill="var(--ink-3)" font-size="12" text-anchor="end">写入最慎</text>
+
+      <rect x="90" y="214" width="820" height="70" rx="6" fill="var(--post-fill)" stroke="var(--line)"/>
+      <text class="svg-h" x="110" y="244" fill="var(--ink)" font-size="18">偏好层</text>
+      <text x="110" y="268" fill="var(--ink-2)" font-size="13">孩子的兴趣主题权重（恐龙 / 青铜 / 科举 / 市井）· 家长的节奏与预算习惯 · 讨厌的事（排队、人多）· 按次缓慢更新</text>
+      <text x="830" y="254" fill="var(--ink-3)" font-size="12" text-anchor="end">需多次验证</text>
+
+      <rect x="140" y="128" width="720" height="70" rx="6" fill="var(--mid-fill)" stroke="var(--line)"/>
+      <text class="svg-h" x="160" y="158" fill="var(--ink)" font-size="18">旅程层</text>
+      <text x="160" y="182" fill="var(--ink-2)" font-size="13">本次行程 · 原始轨迹与停留点 · 当下状态（累了 / 饿了 / 兴奋）· 本次采集的照片与片段 · 研学任务进度</text>
+      <text x="780" y="168" fill="var(--ink-3)" font-size="12" text-anchor="end">一次一份</text>
+
+      <rect x="190" y="42" width="620" height="70" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+      <text class="svg-h" x="210" y="72" fill="var(--ink)" font-size="18">瞬时层</text>
+      <text x="210" y="96" fill="var(--ink-2)" font-size="13">当前位置 · 天气 · 对话上下文 · 刚拍的那张照片 · 会话结束即释放</text>
+      <text x="730" y="82" fill="var(--ink-3)" font-size="12" text-anchor="end">不持久</text>
+    </g>
+
+    <!-- distillation arrows on the left -->
+    <g stroke="var(--pine)" stroke-width="1.5" fill="none" marker-end="url(#arr2)">
+      <path d="M165 112 L165 126"/>
+      <path d="M115 198 L115 212"/>
+      <path d="M65 284 L65 298"/>
+    </g>
+    <text class="svg-t" x="20" y="208" fill="var(--pine)" font-size="13" font-weight="700" transform="rotate(-90 20 208)" text-anchor="middle">蒸馏：往下沉</text>
+
+    <!-- axis on the right -->
+    <g stroke="var(--ink-3)" stroke-width="1" fill="none">
+      <path d="M975 52 L975 362" stroke-dasharray="2 4"/>
+    </g>
+    <text class="svg-t" x="988" y="60" fill="var(--ink-3)" font-size="12" transform="rotate(90 988 60)">时效性高 ←——————————→ 稳定度高</text>
+  </svg>
+  </div>
+
+  <h3 style="font-size:17px;margin:28px 0 6px">蒸馏规则（草案）</h3>
+  <div class="rule"><b>瞬时 → 旅程</b><span>用户明确表达的状态和意愿（"走不动了""这个好有意思"）即时写入；系统推断的只作为本次参考，不写入。</span></div>
+  <div class="rule"><b>旅程 → 偏好</b><span>行后一次性蒸馏：同类信号在本次出现≥2次，或用户在行后回顾中确认，才升为偏好；首次出现只记"提过一次"。</span></div>
+  <div class="rule"><b>偏好 → 身份</b><span>跨≥3次旅程稳定成立，且与同行结构无关，才沉入身份层；身份层每一条都应可被用户看到并一键删除。</span></div>
+  <div class="rule"><b>轨迹 → 足迹</b><span>原始定位点只在旅程层保留，行程结束后 7 天内压缩；长期沉淀的是"语义足迹"——到过的展厅 / 街区节点序列、停留时长、在哪里问了什么、在哪里被打动。足迹是孩子研学档案的骨架，也是下次规划的起点。</span></div>
+  <div class="rule"><b>不写入</b><span>健康状况、财务、敏感身份属性，以及任何用户没说、是系统猜的"画像"。孩子的所有数据由家长账户统一掌控，可整体导出、可一键删除——伴的前提是不被窥视。</span></div>
+</section>
+
+<section>
+  <h2>粘性从哪里来</h2>
+  <p class="lead">一个简单的飞轮。每一环都对应能力地图里的一簇能力，哪一环断了，粘性就会在那里漏掉。</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>环节</th><th>用户感受到的</th><th>系统在做的</th><th>对应能力</th></tr></thead>
+    <tbody>
+      <tr><td>第一次用</td><td>比攻略 App 更像在和一个人商量</td><td>意图理解、协同规划，先建立身份层</td><td>行前</td></tr>
+      <tr><td>路上</td><td>它在场，而且不烦人</td><td>主动性引擎 + 动态调度，持续写入旅程层</td><td>行中</td></tr>
+      <tr><td>回来后</td><td>收到一篇像自己写的游记</td><td>旅程沉淀，并把旅程蒸馏为偏好</td><td>行后</td></tr>
+      <tr><td>第二次用</td><td>"它记得我"——这是切换成本</td><td>读取偏好层，规划起点已不是零</td><td>行前（记忆读取）</td></tr>
+      <tr><td>第 N 次</td><td>它开始先我一步提议</td><td>身份层成熟，关系延续能力启动</td><td>行后 → 行前</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>立项前要定的事</h2>
+  <ol class="open">
+    <li><strong>名字</strong><span>"伴游"不用。先在"旅伴 / 游伴 / 人格化角色名"三条路里选一条，角色名方向最利于建立"它是谁"的认知。</span></li>
+    <li><strong>载体</strong><span>行中陪伴依赖后台定位、持续语音与主动推送，小程序限制较多。建议：小程序做行前规划与获客（游记回流入口），App 承担行中主体验。</span></li>
+    <li><strong>室内定位方案</strong><span>轻资产下不能布信标，博物院只能靠手机：拍展品 / 展牌做视觉识别，配合展厅级确认和平面图。demo 第一件事是在玻璃反光与人流遮挡下实测识别命中率，低于八成就要把"拍一下"改成"问一句"为主。</span></li>
+    <li><strong>家庭冷启动</strong><span>第一次用时身份层是空的。靠一段和孩子的自然对话（而不是家长填表）在 3 分钟内填出年级、一个兴趣入口、家长的节奏偏好三项，其余留给旅程去发现。</span></li>
+    <li><strong>未成年人合规</strong><span>14 岁以下儿童的位置与行为数据，需监护人单独同意并适用单独的处理规则（《个人信息保护法》第 31 条、《儿童个人信息网络保护规定》）。定位采集的告知、足迹的导出与删除、家长账户的掌控权，要在 demo 阶段定下结构，上线前做一次合规评估。</span></li>
+    <li><strong>内容资产</strong><span>两馆的讲解库、按年级分层的研学任务库、问题链，是轻资产模式下唯一能复用和定价的东西。demo 阶段的内容深度，决定了后面能不能横向扩到第三个馆。</span></li>
+  </ol>
+</section>
+
+<footer>v0.2 · 已确定首发场景（南京博物院 / 夫子庙）、受众（亲子研学家庭）、模式（纯线上轻资产）。下一版建议补充：两个 demo 的完整用户旅程、主动性引擎的触发规则表、家庭记忆层与语义足迹的数据结构草案。</footer>
+
+</div>
+</body>
+</html>

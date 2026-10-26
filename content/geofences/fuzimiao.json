@@ -1,0 +1,13 @@
+{
+  "sceneId": "fuzimiao",
+  "note": "坐标为规格阶段占位值，必须按规格 02 §9.3 现场校准清单逐点实测后替换（白天+夜间各一次）。radiusM 初值取规格 02 §3.1 的默认 25m。",
+  "calibrated": false,
+  "fences": [
+    { "poiId": "fzm_tianxia_wenshu", "name": "天下文枢", "center": { "lat": 32.0203, "lng": 118.7893 }, "radiusM": 25, "priority": 2, "sceneId": "fuzimiao" },
+    { "poiId": "fzm_dacheng_dian", "name": "大成殿", "center": { "lat": 32.0208, "lng": 118.7889 }, "radiusM": 25, "priority": 2, "sceneId": "fuzimiao" },
+    { "poiId": "fzm_jiangnan_gongyuan", "name": "江南贡院", "center": { "lat": 32.0211, "lng": 118.7905 }, "radiusM": 25, "priority": 1, "sceneId": "fuzimiao" },
+    { "poiId": "fzm_mingyuan_lou", "name": "明远楼", "center": { "lat": 32.0214, "lng": 118.7908 }, "radiusM": 20, "priority": 1, "sceneId": "fuzimiao" },
+    { "poiId": "fzm_wende_qiao", "name": "文德桥", "center": { "lat": 32.0199, "lng": 118.7881 }, "radiusM": 20, "priority": 2, "sceneId": "fuzimiao" },
+    { "poiId": "fzm_wuyi_xiang", "name": "乌衣巷", "center": { "lat": 32.0196, "lng": 118.7885 }, "radiusM": 25, "priority": 2, "sceneId": "fuzimiao" }
+  ]
+}

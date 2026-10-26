@@ -1,0 +1,42 @@
+{
+  "name": "lvban-agent-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "旅伴 Agent Core — M2 引擎骨架（Memory + Context + Planner）",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d && node --run db:wait",
+    "db:wait": "node scripts/wait-for-db.mjs",
+    "db:down": "docker compose down",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:reset": "docker compose down -v && node --run db:up && node --run db:migrate && node --run seed",
+    "seed": "tsx src/content/seed.ts",
+    "dev": "tsx watch src/http/server.ts",
+    "start": "tsx src/http/server.ts",
+    "cli": "tsx src/cli/main.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint:content": "tsx src/content/lint.ts"
+  },
+  "dependencies": {
+    "fastify": "5.2.1",
+    "pg": "8.13.1",
+    "ioredis": "5.4.2",
+    "zod": "3.24.1",
+    "uuidv7": "1.0.2",
+    "dotenv": "16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/pg": "8.11.10",
+    "@vitest/coverage-v8": "2.1.8",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}

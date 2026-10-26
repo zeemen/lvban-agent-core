@@ -1,0 +1,59 @@
+{
+  "anchorId": "fzm_jiangnan_gongyuan_haoshe",
+  "name": "江南贡院 · 号舍",
+  "sceneId": "fuzimiao",
+  "poiId": "fzm_jiangnan_gongyuan",
+  "isTop30": true,
+  "topics": [
+    "科举",
+    "读书人",
+    "制度"
+  ],
+  "review": {
+    "status": "draft",
+    "reviewedBy": [],
+    "reviewedAt": null,
+    "factCheckRequired": [
+      "号舍实际尺寸（规格 03 §5.1 must_cite：尺寸）",
+      "乡试时长与'九天九夜'表述是否准确（must_cite：历史事件）",
+      "'入闱'一词的准确含义与适用朝代（must_cite：历史事件）",
+      "课标连接待对齐：确定初中语文/历史对应篇目后再填 connection.curriculum"
+    ],
+    "note": "文案结构取自《产品企划书 v1.2》第 05 节交互剧本示例，用于说明结构；史实须经 K1 核定与人工审校后方可上线。"
+  },
+  "k1Sources": [],
+  "elements": {
+    "openingHook": {
+      "companion": "这格子比你宿舍床还窄，九天九夜吃住考都在里面。",
+      "child": "你比划一下，这间小格子是不是还没你双臂展开长？",
+      "light": "这里是江南贡院的号舍，科举考试时考生在此答卷。"
+    },
+    "observation": {
+      "companion": "看一下进深和高度，想想人怎么在里面睡觉。",
+      "child": "数一数，一间号舍里有几块木板？",
+      "light": null
+    },
+    "question": {
+      "companion": "想不想知道当年落榜的人回家怎么跟爸妈交代？",
+      "child": "如果是你，你会带哪三样东西进考场？",
+      "light": null
+    },
+    "explanation": {
+      "companion": "号舍是乡试期间考生答卷、吃饭和睡觉的全部空间。两块木板白天拼成桌案、晚上拼成床铺——相当于你的书桌和床是同一块板子。",
+      "child": "小生带你看——白天两块板子搭成桌子写字，晚上拼起来当床睡觉。一个人，一间小屋，吃住考试都在这儿。",
+      "light": "号舍为乡试考生的答卷与起居空间，内设木板两块，可作桌案与卧具。"
+    },
+    "story": "考生入场要经过搜检，携带的物品逐一查验——有点像今天进考场前交手机，只是查得更彻底。",
+    "connection": {
+      "curriculum": null,
+      "presentDay": "你刚才说期末周三天没出图书馆——放在明朝，这叫'入闱'。"
+    },
+    "memoryLink": {
+      "template": "你上次在{place}问过{topic}，今天正好到了{here}。"
+    },
+    "nextAction": {
+      "suggest": "fzm_mingyuan_lou",
+      "reason": "监考与防弊，接着号舍讲最顺"
+    }
+  }
+}

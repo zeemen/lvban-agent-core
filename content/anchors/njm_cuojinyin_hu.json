@@ -1,0 +1,59 @@
+{
+  "anchorId": "njm_cuojinyin_hu",
+  "name": "错金银重络铜壶",
+  "sceneId": "nanjing_museum",
+  "exhibitId": "njm_cuojinyin_hu",
+  "isTop30": true,
+  "topics": [
+    "青铜器",
+    "工艺",
+    "技术"
+  ],
+  "review": {
+    "status": "draft",
+    "reviewedBy": [],
+    "reviewedAt": null,
+    "factCheckRequired": [
+      "器物全称、年代与出土地点（must_cite：文物名称/年代/出土地点）",
+      "尺寸与重量（must_cite：尺寸）",
+      "错金银工艺的工序先后在学界是否有定论——若无定论，必须按规格 03 §5.2 以『一种说法是』表述",
+      "story 要素待补：需一则有 K1 来源支撑的工艺或出土记述"
+    ],
+    "note": "此件为企划书点名的核心锚点。工艺工序属学术解释而非确定事实，文案已按三类表述分离处理。"
+  },
+  "k1Sources": [],
+  "elements": {
+    "openingHook": {
+      "companion": "你拍的角度正好——看壶肚上那些细到快看不见的金线。",
+      "child": "蹲下来仔细看，壶肚子上是不是有很多像网格一样的金丝？",
+      "light": "这是一件战国时期的错金银工艺青铜壶。"
+    },
+    "observation": {
+      "companion": "顺着一条金线看过去——你觉得它是从哪里起笔的？",
+      "child": "找一找，金色的线和银色的线哪个多？",
+      "light": null
+    },
+    "question": {
+      "companion": "没有电焊的年代，你猜是先刻槽还是先铺金？",
+      "child": "你猜猜两千年前的工匠没有电焊，是怎么把金丝嵌进去的？",
+      "light": null
+    },
+    "explanation": {
+      "companion": "一种说法是：先在铜胎上按纹样刻出凹槽，再把金银丝嵌进去敲实，最后整体打磨到金线与铜面齐平。难的不是嵌，是在铸好的铜器上刻出深浅一致的槽。",
+      "child": "一种说法是，工匠先在铜壶上刻出一道道小沟，再把金丝一点点按进去敲紧，最后磨平——所以摸上去是平的，看上去却有花纹。你观察得很准，这些线确实比头发还细。",
+      "light": "错金银工艺指在器物表面刻槽后嵌入金银丝并打磨齐平的装饰技法。"
+    },
+    "story": null,
+    "connection": {
+      "curriculum": null,
+      "presentDay": "今天做这种镶嵌要靠放大镜和精密工具——你猜两千年前靠的是什么？"
+    },
+    "memoryLink": {
+      "template": "你上次在{place}对{topic}问得最多，这件正好是同一类手艺。"
+    },
+    "nextAction": {
+      "suggest": null,
+      "reason": "南博动线由用户选展区决定，不预设下一件"
+    }
+  }
+}

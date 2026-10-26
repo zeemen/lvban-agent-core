@@ -74,6 +74,16 @@ export const resetIgnored = async (journeyId: string, poiId: string): Promise<vo
   await redis.del(ignoredKey(journeyId, poiId))
 }
 
+/** 上一条用过的垫音，用来避免同一句话连着出现两次 */
+const fillerKey = (journeyId: string): string => `l0:filler:${journeyId}`
+
+export const recordFiller = async (journeyId: string, fillerId: string): Promise<void> => {
+  await redis.set(fillerKey(journeyId), fillerId, 'EX', TTL_SEC)
+}
+
+export const readLastFiller = async (journeyId: string): Promise<string | null> =>
+  redis.get(fillerKey(journeyId))
+
 export const purgeJourney = async (journeyId: string): Promise<void> => {
   const keys = await redis.keys(`l0:*:${journeyId}*`)
   if (keys.length > 0) await redis.del(...keys)

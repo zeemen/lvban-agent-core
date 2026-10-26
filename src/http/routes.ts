@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import { onArrive, onQuestion } from '../agent/respond.js'
+import { streamQuestion } from '../agent/respond-stream.js'
 import { endJourney, purgeJourneyData, startJourney } from '../context/journey.js'
 import { ingestFixes } from '../context/ingest.js'
 import { decideProactivity } from '../context/proactivity.js'
@@ -104,6 +105,43 @@ export const registerRoutes = (app: FastifyInstance): void => {
     const body = z.object({ text: z.string().min(1), poiId: z.string().optional() })
       .parse(request.body)
     return onQuestion({ journeyId: id, ...body })
+  })
+
+  /**
+   * 流式应答（SSE）。M3 小程序的「问一句」走这条。
+   *
+   * 事件顺序即用户体感：filler 立刻到（前端播本地预合成音频），
+   * 之后每凑齐一句就发一个 sentence 事件供 TTS 分句合成。
+   */
+  app.post('/v1/journeys/:id/ask/stream', async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    const body = z.object({
+      text: z.string().min(1),
+      poiId: z.string().optional(),
+      situation: z.enum(['question', 'photo', 'arrive']).optional(),
+    }).parse(request.body)
+
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      // 小程序侧经过的代理常会缓冲 SSE，这个头能让多数反代放行
+      'x-accel-buffering': 'no',
+    })
+
+    try {
+      for await (const event of streamQuestion({ journeyId: id, ...body })) {
+        reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误'
+      reply.raw.write(
+        `event: error\ndata: ${JSON.stringify({ type: 'error', message })}\n\n`,
+      )
+    } finally {
+      reply.raw.end()
+    }
+    return reply
   })
 
   app.post('/v1/vision/anchor', async (request) => {

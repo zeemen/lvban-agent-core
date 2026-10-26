@@ -1,0 +1,8 @@
+{
+  "register": "concise",
+  "note": "轻导览模式。不设人设，垫音只做最轻的状态提示。",
+  "fillers": [
+    { "id": "light_q_01", "situation": "question", "text": "稍等。", "audioKey": "fillers/light_q_01.mp3" },
+    { "id": "light_p_01", "situation": "photo", "text": "识别中。", "audioKey": "fillers/light_p_01.mp3" }
+  ]
+}

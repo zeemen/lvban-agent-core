@@ -11,6 +11,7 @@ import { complete } from '../models/router.js'
 import { decidePlan, type PlanDecision } from '../planner/decide.js'
 import { checkRegister } from '../planner/register-guard.js'
 import { renderFromAnchor } from '../planner/render.js'
+import { buildAnswerSystemPrompt, buildRewriteSuffix } from './prompt.js'
 
 /**
  * 端到端编排：Context → Decision → Skill → Response。
@@ -176,27 +177,7 @@ export const onQuestion = async (input: {
     heardBefore: [],
   })
 
-  /*
-   * 输出形态的约束和内容的约束一样重要：
-   * 这是语音优先的产品（规格 03：语音流、锁屏可听），分段加空行的文本
-   * 既不像「一个人在你旁边说话」，TTS 念出来也很怪。
-   * 实测 deepseek-flash 不加这段约束会输出 3–4 段带空行的聊天体。
-   */
-  const system = [
-    `你是旅伴 agent，一个陪用户旅行的同伴，不是客服也不是讲解器。`,
-    `当前模式 ${ctx.mode}，口吻档位 ${plan.register}，用户年龄段 ${ctx.ageBand}。`,
-    `【输出形态】只说一段话，${plan.maxChars} 字以内；`,
-    `不分段、不空行、不用任何 Markdown 标记、不用「简单说」「首先」这类书面连接词；`,
-    `像在现场开口说话，不像写文章。`,
-    anchor === null
-      ? ''
-      : `【当前位置】${anchor.name}。`,
-    `【证据纪律】年代、名称、尺寸、出土地点、人物关系、历史事件必须有据可查；`,
-    `没有把握就直接说不确定，并把人引向现场说明牌，不要含糊其辞、不要编。`,
-    ctx.memoryHooks.length === 0
-      ? ''
-      : `【可引用的记忆】${ctx.memoryHooks.join('；')}。自然地接上，不要生硬复述。`,
-  ].join('')
+  const system = buildAnswerSystemPrompt({ ctx, plan, anchor })
 
   const first = await complete({
     task: 'qa',
@@ -216,10 +197,9 @@ export const onQuestion = async (input: {
     ? null
     : await complete({
         task: 'qa',
-        system: `${system}【重写要求】上一版违反了口吻规则：` +
-          `${firstGuard.violations.map((v) => v.rule).join('、')}。` +
-          `不要连续陈述三句事实，每两句事实之间至少有一句对用户开口` +
-          `（提问、类比、或者用「你」直接说）。仍然只说一段话，${plan.maxChars} 字以内。`,
+        system: system + buildRewriteSuffix(
+          firstGuard.violations.map((v) => v.rule), plan.maxChars,
+        ),
         user: input.text,
         maxTokens: plan.maxTokens,
       })

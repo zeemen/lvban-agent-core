@@ -1,5 +1,6 @@
 import { uuidv7 } from 'uuidv7'
 import { onArrive, onQuestion } from '../agent/respond.js'
+import { streamQuestion } from '../agent/respond-stream.js'
 import { endJourney, startJourney } from '../context/journey.js'
 import { ingestFixes } from '../context/ingest.js'
 import { pool } from '../db/pool.js'
@@ -78,20 +79,30 @@ const runJourney = async (input: {
 
   if (input.askQuestions) {
     for (const q of ['古代人怎么考试啊', '那考不上的人怎么办']) {
-      const turn = await onQuestion({
-        journeyId: journey.id, text: q, poiId: 'fzm_jiangnan_gongyuan',
-      })
       console.log(`\n  你   > ${q}`)
-      console.log(`  旅伴 > ${turn.text}`)
-      const shape = [
-        `${(turn.text ?? '').length} 字`,
-        `上限 ${turn.plan?.maxChars}`,
-        (turn.text ?? '').includes('\n') ? '⚠ 含换行' : '单段',
-        turn.usedElements.includes('model:qa:rewrite') ? '口吻守卫触发了一次重写' : '一次通过',
-      ].join(' · ')
-      console.log(`  └─ 形态：${shape}`)
-      if (turn.guardViolations.length > 0) {
-        console.log(`  └─ ⚠ 口吻守卫命中：${turn.guardViolations.join(', ')}`)
+      let answer = ''
+      for await (const ev of streamQuestion({
+        journeyId: journey.id, text: q, poiId: 'fzm_jiangnan_gongyuan',
+      })) {
+        if (ev.type === 'filler') {
+          console.log(`  垫音 > ${ev.text}   ← 本地预合成，0ms 播放（${ev.audioKey}）`)
+        }
+        if (ev.type === 'sentence' && ev.index === 0) {
+          console.log(`  旅伴 > ${ev.text}   ← 第一句 ${ev.atMs}ms，已可送 TTS`)
+        }
+        if (ev.type === 'sentence' && ev.index > 0) console.log(`         ${ev.text}`)
+        if (ev.type === 'error') console.log(`  ⚠ ${ev.message} → ${ev.fallbackText}`)
+        if (ev.type === 'done') {
+          answer = ev.text
+          const t = ev.timing
+          console.log(`  └─ 时序：垫音 ${t.fillerAtMs}ms · 首个正文 ${t.firstDeltaMs}ms`
+            + ` · 第一句 ${t.firstSentenceMs}ms · 全部 ${t.totalMs}ms · ${t.sentences} 句`)
+          console.log(`  └─ 形态：${answer.length} 字 · 上限 ${ev.plan.maxChars}`
+            + ` · ${answer.includes('\n') ? '⚠ 含换行' : '单段'}`)
+          if (ev.guardViolations.length > 0) {
+            console.log(`  └─ ⚠ 口吻守卫命中（流式下只遥测不重写）：${ev.guardViolations.join(', ')}`)
+          }
+        }
       }
     }
   }

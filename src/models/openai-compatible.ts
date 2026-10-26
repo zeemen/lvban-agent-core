@@ -2,8 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { ModelError } from './errors.js'
 import { postJson } from './http.js'
+import { streamSse, type StreamEvent } from './stream.js'
 import {
-  budgetWithReasoning, estimateCostCny, resolveModelId, resolveVision,
+  budgetWithReasoning, estimateCostCny, resolveModelId, resolveVision, thinkingParams,
   type ProviderProfile,
 } from './providers.js'
 import {
@@ -162,7 +163,7 @@ export const createOpenAICompatibleAdapter = (options: AdapterOptions): ModelAda
     async complete(request: CompletionRequest): Promise<CompletionResult> {
       const model = resolveModelId(profile, request.task, env)
       // request.maxTokens 是规格 03 §2 的**回答**长度；推理余量额外加
-      const sentMaxTokens = budgetWithReasoning(profile, request.maxTokens)
+      const sentMaxTokens = budgetWithReasoning(profile, request.maxTokens, request.task, env)
       const { payload, latencyMs } = await postJson({
         url: `${baseUrl}/chat/completions`,
         apiKey,
@@ -176,6 +177,8 @@ export const createOpenAICompatibleAdapter = (options: AdapterOptions): ModelAda
           ],
           max_tokens: sentMaxTokens,
           temperature: request.task === 'planner' ? 0 : 0.7,
+          // 对话类任务关掉深度思考：首字延迟 3.7s → 1.2s（规格 03 §7 预算 1200ms）
+          ...thinkingParams(profile, request.task, env),
           ...(request.json === true ? { response_format: { type: 'json_object' } } : {}),
         },
       })
@@ -192,6 +195,30 @@ export const createOpenAICompatibleAdapter = (options: AdapterOptions): ModelAda
         costCny: estimateCostCny(profile, extracted.tokensIn, extracted.tokensOut),
         cached: false,
       }
+    },
+
+    async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
+      const model = resolveModelId(profile, request.task, env)
+      const sentMaxTokens = budgetWithReasoning(profile, request.maxTokens, request.task, env)
+      yield* streamSse({
+        url: `${baseUrl}/chat/completions`,
+        apiKey,
+        provider: profile.name,
+        timeoutMs: hardTimeoutMs(request.task),
+        body: {
+          model,
+          messages: [
+            { role: 'system', content: request.system },
+            { role: 'user', content: request.user },
+          ],
+          max_tokens: sentMaxTokens,
+          temperature: request.task === 'planner' ? 0 : 0.7,
+          stream: true,
+          // 不带这个就拿不到 usage，账本会漏掉流式调用的 token
+          stream_options: { include_usage: true },
+          ...thinkingParams(profile, request.task, env),
+        },
+      })
     },
 
     async recognize(request: VisionRequest): Promise<VisionResult> {
@@ -238,13 +265,14 @@ export const createOpenAICompatibleAdapter = (options: AdapterOptions): ModelAda
               ],
             },
           ],
-          max_tokens: budgetWithReasoning(profile, 200),
+          max_tokens: budgetWithReasoning(profile, 200, 'vision', env),
+          ...thinkingParams(profile, 'vision', env),
           temperature: 0,
         },
       })
 
       const { text, tokensIn, tokensOut } = extractContent(
-        payload, profile.name, budgetWithReasoning(profile, 200),
+        payload, profile.name, budgetWithReasoning(profile, 200, 'vision', env),
       )
       const parsed = visionReplySchema.safeParse(
         JSON.parse(stripCodeFence(text) || '{"match":null}'),

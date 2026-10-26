@@ -259,6 +259,16 @@ describe('口吻守卫触发重写 —— 规格 03 §9.1「命中即打回重�
           tokensIn: 10, tokensOut: 20, reasoningTokens: 0, costCny: 0, cached: false,
         }
       },
+      async *stream(request) {
+        const text = replies[Math.min(call, replies.length - 1)] ?? ''
+        call += 1
+        yield { type: 'delta' as const, text }
+        yield {
+          type: 'done' as const,
+          tokensIn: 10, tokensOut: 20, reasoningTokens: 0,
+        }
+        void request
+      },
       async recognize() {
         return { candidates: [], provider: 'mock', latencyMs: 1, costCny: 0 }
       },

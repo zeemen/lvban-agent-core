@@ -178,6 +178,54 @@ describe('行中接口', () => {
   })
 })
 
+describe('流式应答接口（SSE）', () => {
+  test('返回 text/event-stream，首个事件是垫音', async () => {
+    const userId = await createUser()
+    const start = await app.inject({
+      method: 'POST', url: '/v1/journeys',
+      payload: {
+        userId, mode: 'companion', party: 'solo',
+        sceneId: 'fuzimiao', trackConsent: 'visited_points_only',
+      },
+    })
+    const { journeyId } = json<{ journeyId: string }>(start.payload)
+
+    const res = await app.inject({
+      method: 'POST', url: `/v1/journeys/${journeyId}/ask/stream`,
+      payload: { text: '古代人怎么考试', poiId: 'fzm_jiangnan_gongyuan' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('text/event-stream')
+    const events = res.payload.split('\n\n').filter((b) => b.trim() !== '')
+    expect(events[0]).toContain('event: filler')
+    expect(res.payload).toContain('event: done')
+  })
+
+  test('事件体是可解析的 JSON，带 audioKey 供前端播放', async () => {
+    const userId = await createUser()
+    const start = await app.inject({
+      method: 'POST', url: '/v1/journeys',
+      payload: {
+        userId, mode: 'companion', party: 'solo',
+        sceneId: 'fuzimiao', trackConsent: 'visited_points_only',
+      },
+    })
+    const { journeyId } = json<{ journeyId: string }>(start.payload)
+
+    const res = await app.inject({
+      method: 'POST', url: `/v1/journeys/${journeyId}/ask/stream`,
+      payload: { text: '号舍多大' },
+    })
+
+    const firstData = res.payload.split('\n')
+      .find((l) => l.startsWith('data:'))?.slice(5).trim() ?? ''
+    const parsed = JSON.parse(firstData) as { type: string; audioKey?: string }
+    expect(parsed.type).toBe('filler')
+    expect(parsed.audioKey).toMatch(/\.mp3$/)
+  })
+})
+
 describe('视觉接口', () => {
   test('识别接口按候选集约束返回决策', async () => {
     const res = await app.inject({

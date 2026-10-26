@@ -30,6 +30,9 @@ const withConfidence = (confidence: number): void => {
         tokensIn: 0, tokensOut: 0, reasoningTokens: 0, costCny: 0, cached: false,
       }
     },
+    async *stream() {
+      yield { type: 'done' as const, tokensIn: 0, tokensOut: 0, reasoningTokens: 0 }
+    },
     async recognize(request) {
       const first = request.candidates[0]
       return {

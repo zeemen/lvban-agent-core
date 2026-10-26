@@ -1,3 +1,4 @@
+import type { StreamEvent } from './stream.js'
 import type {
   CompletionRequest, CompletionResult, ModelAdapter, VisionRequest, VisionResult,
 } from './types.js'
@@ -47,6 +48,23 @@ export const createMockAdapter = (): ModelAdapter => ({
       reasoningTokens: 0,
       costCny: Number((((tokensIn + tokensOut) / 1000) * COST_PER_1K_TOKENS_CNY).toFixed(6)),
       cached: false,
+    }
+  },
+
+  async *stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
+    // 切成几块吐出来，让分句器与编排逻辑在离线测试里也走到真实路径
+    const text = request.json === true
+      ? plannerJson()
+      : `[mock:${request.task}] ${request.user.slice(0, 40)}。这是第二句，用来验证分句。`
+    const size = Math.max(1, Math.ceil(text.length / 5))
+    for (let i = 0; i < text.length; i += size) {
+      yield { type: 'delta', text: text.slice(i, i + size) }
+    }
+    yield {
+      type: 'done',
+      tokensIn: estimateTokens(request.system + request.user),
+      tokensOut: estimateTokens(text),
+      reasoningTokens: 0,
     }
   },
 

@@ -2,6 +2,7 @@ import { config, resolveApiKey, resolveProviderFor } from '../config/index.js'
 import { createMockAdapter } from './mock.js'
 import { createOpenAICompatibleAdapter } from './openai-compatible.js'
 import { resolveProfile, resolveVision, type VisionVerdict } from './providers.js'
+import type { StreamEvent } from './stream.js'
 import {
   LATENCY_BUDGET_MS, type CompletionRequest, type CompletionResult,
   type ModelAdapter, type ModelTask, type VisionRequest, type VisionResult,
@@ -105,6 +106,26 @@ export const complete = async (request: CompletionRequest): Promise<CompletionRe
   const result = await pickAdapter(request.task).complete(request)
   record(request.task, result)
   return result
+}
+
+/**
+ * 流式调用。记账在流结束时一次性做——中途没有 usage 可记。
+ */
+export async function* stream(request: CompletionRequest): AsyncIterable<StreamEvent> {
+  const adapter = pickAdapter(request.task)
+  const started = Date.now()
+  for await (const event of adapter.stream(request)) {
+    if (event.type === 'done') {
+      record(request.task, {
+        latencyMs: Date.now() - started,
+        costCny: null,
+        tokensIn: event.tokensIn,
+        tokensOut: event.tokensOut,
+        reasoningTokens: event.reasoningTokens,
+      })
+    }
+    yield event
+  }
 }
 
 export const recognize = async (request: VisionRequest): Promise<VisionResult> => {

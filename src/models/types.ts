@@ -1,3 +1,5 @@
+import type { StreamEvent } from './stream.js'
+
 /** Model Router 契约 —— 规格 03 §7。不绑定单一模型，控制 Quality × Latency × Cost。 */
 
 export const MODEL_TASKS = [
@@ -62,6 +64,8 @@ export type ModelAdapter = {
   readonly name: string
   complete(request: CompletionRequest): Promise<CompletionResult>
   recognize(request: VisionRequest): Promise<VisionResult>
+  /** 流式输出。规格 03 §7 的首句延迟靠它 + 预置垫音一起压下去 */
+  stream(request: CompletionRequest): AsyncIterable<StreamEvent>
 }
 
 /** 硬超时：延迟预算的 5 倍，且不低于 3 秒 */

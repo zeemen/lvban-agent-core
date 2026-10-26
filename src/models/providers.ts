@@ -63,6 +63,23 @@ export type ReasoningBudget =
       readonly source: string
     }
 
+/**
+ * 能不能为某次调用关掉深度思考，以及怎么关。
+ *
+ * 这是本产品延迟问题的主要杠杆：实测 deepseek-flash 默认思考时
+ * 首个正文 delta 要 3718ms，关掉后降到 1181ms（思维链 0 字，已用 usage 核实）。
+ * 规格 03 §7 给 qa 的预算是 1200ms —— 开着思考根本不可能达标。
+ */
+export type ThinkingControl =
+  | { readonly kind: 'unsupported' }
+  | {
+      readonly kind: 'param'
+      /** 关闭思考时额外并入请求体的字段 */
+      readonly disable: Readonly<Record<string, unknown>>
+      readonly verifiedAt: string
+      readonly source: string
+    }
+
 export type ProviderProfile = {
   readonly name: string
   readonly label: string
@@ -72,6 +89,7 @@ export type ProviderProfile = {
   readonly apiKeyEnv: string
   readonly vision: VisionSupport
   readonly reasoning: ReasoningBudget
+  readonly thinking: ThinkingControl
   /** 调用时 model 字段填的是模型 ID，还是账号自有的推理接入点 ID */
   readonly modelFieldKind: 'model_id' | 'endpoint_id'
   /** 上次核实时的默认模型 ID；可被 MODEL_ID_<TASK> 覆盖 */
@@ -96,6 +114,7 @@ export const PROVIDERS: Readonly<Record<string, ProviderProfile>> = {
       source: 'help.aliyun.com/zh/model-studio/qwen-vl-compatible-with-openai',
     },
     reasoning: { kind: 'none' },
+    thinking: { kind: 'unsupported' },
     modelFieldKind: 'model_id',
     defaultModels: {
       intent: 'qwen-turbo',
@@ -126,6 +145,7 @@ export const PROVIDERS: Readonly<Record<string, ProviderProfile>> = {
       kind: 'reserve', minTokens: 128, multiplier: 1,
       verifiedAt: '2026-10-25', source: '保守默认值，未实测',
     },
+    thinking: { kind: 'unsupported' },
     modelFieldKind: 'endpoint_id',
     defaultModels: {},
     notes: [
@@ -157,6 +177,14 @@ export const PROVIDERS: Readonly<Record<string, ProviderProfile>> = {
       kind: 'reserve', minTokens: 256, multiplier: 2,
       verifiedAt: '2026-10-25', source: '本机实测 api.deepseek.com',
     },
+    // 官方参考同时提供 thinking.type 与 reasoning_effort；
+    // 文档建议 flash 系列用 thinking.type，且不要与 reasoning_effort 混用
+    thinking: {
+      kind: 'param',
+      disable: { thinking: { type: 'disabled' } },
+      verifiedAt: '2026-10-25',
+      source: 'api-docs.deepseek.com/api/create-chat-completion + 本机实测',
+    },
     modelFieldKind: 'model_id',
     defaultModels: {
       intent: 'deepseek-flash',
@@ -173,7 +201,7 @@ export const PROVIDERS: Readonly<Record<string, ProviderProfile>> = {
       '价格分高峰/空闲时段（空闲为高峰一半，高峰为北京时间 9:00–12:00 与 14:00–18:00），因此未写入静态 pricing',
       '图片上限极宽松（单图 32MiB）；我们自己压到 300KB 是规格 02 §4.2 的产品约束，不是供应商限制',
       '两个模型都是推理模型：reasoning_content 与 content 分开返回，推理 token 计入 max_tokens 且计费',
-      '实测延迟：文本 1.5–2.7s、视觉 1.9s 起（偶尔破 5s），均远超规格 03 §7 的 1200/1500ms 预算 —— 需要流式输出 + 预置垫音',
+      '实测延迟（开思考）：首个正文 delta 3.7s、总时长 4.2s；关思考后降到 1.2s / 2.2s',
       '实测推理开销：回一句「收到」用掉 31–47 输出 token，其中 94%+ 是思维链；JSON 规划调用约 104 推理 token',
     ],
   },
@@ -269,9 +297,47 @@ export const estimateCostCny = (
  * 规格 03 §2 的年龄段长度是**回答**长度，推理余量额外加。
  */
 export const budgetWithReasoning = (
-  profile: ProviderProfile, answerTokens: number,
+  profile: ProviderProfile,
+  answerTokens: number,
+  task: ModelTask,
+  env: NodeJS.ProcessEnv = process.env,
 ): number => {
   if (profile.reasoning.kind === 'none') return answerTokens
+  // 这次调用已经关掉思考，就不必再为思维链留额度
+  if (profile.thinking.kind === 'param' && !wantsThinking(task, env)) return answerTokens
   const { minTokens, multiplier } = profile.reasoning
   return answerTokens + Math.max(minTokens, Math.ceil(answerTokens * multiplier))
+}
+
+/**
+ * 按任务决定要不要深度思考。
+ *
+ * 默认策略：对话类（intent/qa/copy）关掉——用户在展品前等不起 3.7 秒；
+ * planner 保留——规格 03 §7 要求「深度解释规划用强推理模型」，
+ * 而它不在用户等待的关键路径上（决策只出 JSON，且可被缓存开场掩盖）。
+ */
+const THINKING_BY_TASK: Partial<Record<ModelTask, boolean>> = {
+  intent: false,
+  qa: false,
+  copy: false,
+  planner: true,
+  vision: false,
+}
+
+export const wantsThinking = (
+  task: ModelTask, env: NodeJS.ProcessEnv = process.env,
+): boolean => {
+  const override = env[`MODEL_THINKING_${task.toUpperCase()}`]
+  if (override === 'on') return true
+  if (override === 'off') return false
+  return THINKING_BY_TASK[task] ?? false
+}
+
+/** 关闭思考时要并进请求体的字段；不支持或要保留思考时返回空对象 */
+export const thinkingParams = (
+  profile: ProviderProfile, task: ModelTask, env: NodeJS.ProcessEnv = process.env,
+): Readonly<Record<string, unknown>> => {
+  if (wantsThinking(task, env)) return {}
+  if (profile.thinking.kind === 'unsupported') return {}
+  return profile.thinking.disable
 }

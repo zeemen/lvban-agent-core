@@ -1,0 +1,11 @@
+{
+  "register": "peer",
+  "note": "同游模式的预置垫音。audioKey 指向 CDN 上预合成的 MP3；TTS 未接入前前端可只显示文字。规格 03 §7.2 的缓存策略同源：固定台词一次合成、永久复用。",
+  "fillers": [
+    { "id": "peer_q_01", "situation": "question", "text": "嗯，这个有意思。", "audioKey": "fillers/peer_q_01.mp3" },
+    { "id": "peer_q_02", "situation": "question", "text": "等我想想怎么说。", "audioKey": "fillers/peer_q_02.mp3" },
+    { "id": "peer_q_03", "situation": "question", "text": "问到点子上了。", "audioKey": "fillers/peer_q_03.mp3" },
+    { "id": "peer_p_01", "situation": "photo", "text": "我看看你拍的这个。", "audioKey": "fillers/peer_p_01.mp3" },
+    { "id": "peer_p_02", "situation": "photo", "text": "角度不错，我认认。", "audioKey": "fillers/peer_p_02.mp3" }
+  ]
+}

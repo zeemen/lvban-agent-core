@@ -1,0 +1,10 @@
+{
+  "register": "storyteller",
+  "note": "亲子模式孩子端的书童垫音。不说教、不催促，只负责把空白填上。",
+  "fillers": [
+    { "id": "child_q_01", "situation": "question", "text": "容小生想想……", "audioKey": "fillers/child_q_01.mp3" },
+    { "id": "child_q_02", "situation": "question", "text": "哎呀，这个问得好。", "audioKey": "fillers/child_q_02.mp3" },
+    { "id": "child_p_01", "situation": "photo", "text": "让小生凑近瞧瞧。", "audioKey": "fillers/child_p_01.mp3" },
+    { "id": "child_p_02", "situation": "photo", "text": "哇，你发现了什么？", "audioKey": "fillers/child_p_02.mp3" }
+  ]
+}

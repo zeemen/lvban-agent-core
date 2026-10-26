@@ -1,6 +1,6 @@
 import { vision as cfg } from '../config/index.js'
 import { redis } from '../db/redis.js'
-import { recognize } from '../models/router.js'
+import { recognize, visionAvailability } from '../models/router.js'
 
 /**
  * 视觉锚点 —— 规格 02 §4。
@@ -22,7 +22,10 @@ export type VisionAnchorResult = {
   }[]
   readonly decision: VisionDecision
   readonly correctionToken: string
+  /** 前端据此把主入口从「拍一下」切到「问一句」 */
   readonly fallbackActive: boolean
+  /** 降级原因，运营后台排查用；正常时为 null */
+  readonly fallbackReason: string | null
 }
 
 export const decideVisionAnchor = async (input: {
@@ -31,11 +34,23 @@ export const decideVisionAnchor = async (input: {
 }): Promise<VisionAnchorResult> => {
   const hitRate = await visionHitRate()
 
+  // 配置里根本没有可用的 VLM：降级到「问一句」，不要在用户按下快门后抛错
+  const availability = visionAvailability()
+  if (!availability.available) {
+    return {
+      candidates: [], decision: 'fallback_ask',
+      correctionToken: input.imageKey,
+      fallbackActive: true,
+      fallbackReason: availability.reason,
+    }
+  }
+
   // 候选集为空时无法做约束识别，直接降级
   if (input.candidates.length === 0) {
     return {
       candidates: [], decision: 'fallback_ask',
       correctionToken: input.imageKey, fallbackActive: hitRate.fallbackActive,
+      fallbackReason: '当前展区没有可识别的候选展品',
     }
   }
 
@@ -53,6 +68,9 @@ export const decideVisionAnchor = async (input: {
     decision,
     correctionToken: input.imageKey,
     fallbackActive: hitRate.fallbackActive,
+    fallbackReason: hitRate.fallbackActive
+      ? `识别命中率 ${hitRate.hitRate} 低于阈值 ${hitRate.threshold}`
+      : null,
   }
 }
 

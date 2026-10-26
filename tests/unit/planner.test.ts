@@ -147,7 +147,7 @@ describe('renderFromAnchor', () => {
     shouldSpeak: true, length: 'long', register: 'peer', openWith: 'question',
     useStory: false, linkCurriculum: false, linkMemory: null, leaveHook: true,
     skipMainExplanation: false, nextAction: null, evidenceRequired: [],
-    maxTokens: 220, reason: 'test', ...patch,
+    maxTokens: 220, maxChars: 220, reason: 'test', ...patch,
   })
 
   test('提问开场按「悬念 → 提问 → 解释」顺序组装', () => {
@@ -231,6 +231,24 @@ describe('checkRegister —— 规格 03 §8.1', () => {
     const text = '你上次在南博问过科举。号舍有两块木板。考试持续九天。'
 
     expect(checkRegister(text, 'peer').ok).toBe(true)
+  })
+
+  test.each([
+    '这格子比你宿舍床还窄',
+    '你在号舍里站一会儿就明白',
+    '你刚才说期末周没出图书馆',
+    '要问具体尺寸，你抬头看说明牌',
+  ])('任何对用户开口的句子都不计入事实连击：%s', (engaging) => {
+    // 这些都曾被枚举式词表误判成事实堆砌（真实模型输出里抓到的）
+    const text = `号舍有两块木板。考试持续九天。${engaging}。监考在明远楼。`
+
+    expect(checkRegister(text, 'peer').ok).toBe(true)
+  })
+
+  test('真正的连续事实堆砌仍然被拦住', () => {
+    const text = '号舍有两块木板。考试持续九天。监考在明远楼。糊名由誊录官负责。'
+
+    expect(checkRegister(text, 'peer').ok).toBe(false)
   })
 
   test('轻导览口吻不限制事实密度', () => {

@@ -44,6 +44,7 @@ export const createMockAdapter = (): ModelAdapter => ({
       latencyMs: BASE_LATENCY_MS,
       tokensIn,
       tokensOut,
+      reasoningTokens: 0,
       costCny: Number((((tokensIn + tokensOut) / 1000) * COST_PER_1K_TOKENS_CNY).toFixed(6)),
       cached: false,
     }

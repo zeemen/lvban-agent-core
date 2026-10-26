@@ -45,16 +45,20 @@ const splitSentences = (text: string): readonly string[] =>
 /**
  * 「这一句有没有把用户拉进来」。
  *
- * max_consecutive_facts 的意图是不要连续堆砌事实，所以除了提问和类比，
- * 比较句（「比你宿舍床还窄」——企划书第 05 节原文举的好文案）
- * 和第二人称记忆回溯（「你上次在…」）都算把用户拉进来了，不该计入事实连击。
+ * max_consecutive_facts 的意图是不要连续堆砌事实。判据取三类：
+ *   1. 提问
+ *   2. 类比
+ *   3. **用第二人称跟用户说话**
+ *
+ * 第 3 条原先是枚举短语（「比你」「你上次」「你觉得」…），结果一直在打地鼠：
+ * 「这格子比你宿舍床还窄」（企划书原文举的好文案）和
+ * 「你在号舍里站一会儿就明白」都被误判成事实堆砌。
+ * 直接看有没有「你」更稳：对用户开口本身就打断了事实连击的节奏。
  */
 const isQuestionOrAnalogy = (sentence: string): boolean =>
   /[？?]/.test(sentence) ||
   /像|好比|相当于|仿佛|不亚于/.test(sentence) ||
-  /你猜|想不想|是不是|你觉得|你说/.test(sentence) ||
-  /比你|比我|跟你|和你/.test(sentence) ||
-  /你上次|上次你|你之前|你刚才说/.test(sentence)
+  /你/.test(sentence)
 
 export const checkRegister = (text: string, register: Register): GuardResult => {
   const violations: GuardViolation[] = []

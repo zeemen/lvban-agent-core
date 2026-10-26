@@ -31,7 +31,7 @@ const renderPaths = (): readonly { readonly label: string; readonly decision: Pl
     shouldSpeak: true, length: 'long', register: 'peer', openWith: 'question',
     useStory: true, linkCurriculum: false, linkMemory: null, leaveHook: true,
     skipMainExplanation: false, nextAction: null, evidenceRequired: [],
-    maxTokens: 220, reason: 'lint',
+    maxTokens: 220, maxChars: 220, reason: 'lint',
   }
   return [
     { label: '同游·首访·提问开场', decision: base },

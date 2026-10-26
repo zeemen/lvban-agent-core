@@ -1,6 +1,6 @@
-import { afterAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { redis } from '../../src/db/redis.js'
-import { registerAdapter } from '../../src/models/router.js'
+import { registerAdapter, visionAvailability } from '../../src/models/router.js'
 import type { ModelAdapter } from '../../src/models/types.js'
 import {
   decideVisionAnchor, recordVisionOutcome, visionHitRate,
@@ -27,7 +27,7 @@ const withConfidence = (confidence: number): void => {
     async complete() {
       return {
         text: '', provider: 'mock', task: 'qa' as const, latencyMs: 1,
-        tokensIn: 0, tokensOut: 0, costCny: 0, cached: false,
+        tokensIn: 0, tokensOut: 0, reasoningTokens: 0, costCny: 0, cached: false,
       }
     },
     async recognize(request) {
@@ -147,5 +147,69 @@ describe('命中率熔断 —— 规格 02 §4.3', () => {
     const report = await visionHitRate()
 
     expect(report.samples).toBe(200)
+  })
+})
+
+describe('无可用 VLM 时的降级 —— 不能在用户按下快门后抛错', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  test('视觉模型配成 deepseek-v4-pro（不吃图片）时降级到「问一句」', async () => {
+    vi.stubEnv('MODEL_PROVIDER', 'deepseek')
+    vi.stubEnv('MODEL_ID_VISION', 'deepseek-v4-pro')
+    // 给假 Key 以隔离变量：这里要测的是「模型不吃图片」，不是「缺 Key」
+    vi.stubEnv('DEEPSEEK_API_KEY', 'sk-fake-for-availability-check')
+
+    const result = await decideVisionAnchor({ imageKey: 'k', candidates: CANDIDATES })
+
+    expect(result.decision).toBe('fallback_ask')
+    expect(result.fallbackActive).toBe(true)
+    expect(result.fallbackReason).toContain('deepseek-flash')
+  })
+
+  test('换成 deepseek-flash 后视觉链路判定为可用', () => {
+    vi.stubEnv('MODEL_PROVIDER', 'deepseek')
+    vi.stubEnv('MODEL_ID_VISION', 'deepseek-flash')
+    vi.stubEnv('DEEPSEEK_API_KEY', 'sk-fake-for-availability-check')
+
+    const verdict = visionAvailability()
+
+    expect(verdict).toEqual({ available: true, modelId: 'deepseek-flash', certain: true })
+  })
+
+  test('文本走 DeepSeek、视觉单独走通义千问的混搭配置被认可', () => {
+    vi.stubEnv('MODEL_PROVIDER', 'deepseek')
+    vi.stubEnv('MODEL_PROVIDER_VISION', 'dashscope')
+    vi.stubEnv('MODEL_ID_VISION', 'qwen-vl-max')
+    vi.stubEnv('DASHSCOPE_API_KEY', 'sk-fake-for-availability-check')
+
+    const verdict = visionAvailability()
+
+    expect(verdict).toEqual({ available: true, modelId: 'qwen-vl-max', certain: true })
+  })
+
+  test('配了供应商但没有 Key 时也要提前降级，而不是调用时抛错', async () => {
+    vi.stubEnv('MODEL_PROVIDER', 'dashscope')
+    vi.stubEnv('MODEL_ID_VISION', 'qwen-vl-max')
+    vi.stubEnv('DASHSCOPE_API_KEY', '')
+    vi.stubEnv('MODEL_API_KEY', '')
+
+    const result = await decideVisionAnchor({ imageKey: 'k', candidates: CANDIDATES })
+
+    expect(result.decision).toBe('fallback_ask')
+    expect(result.fallbackActive).toBe(true)
+    expect(result.fallbackReason).toContain('DASHSCOPE_API_KEY')
+  })
+
+  test('降级原因会被带出来，供运营后台排查', async () => {
+    vi.stubEnv('MODEL_PROVIDER', 'ark')
+    vi.stubEnv('MODEL_ID_VISION', '')
+    vi.stubEnv('ARK_API_KEY', 'sk-fake-for-availability-check')
+
+    const result = await decideVisionAnchor({ imageKey: 'k', candidates: CANDIDATES })
+
+    expect(result.decision).toBe('fallback_ask')
+    expect(result.fallbackReason).toContain('MODEL_ID_VISION')
   })
 })

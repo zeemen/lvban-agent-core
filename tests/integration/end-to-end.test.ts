@@ -6,6 +6,9 @@ import { distillJourney } from '../../src/memory/distill.js'
 import { getMemoryHooks } from '../../src/memory/retrieval.js'
 import * as repo from '../../src/memory/repo.js'
 import { readLedger, resetLedger } from '../../src/models/router.js'
+import { registerAdapter } from '../../src/models/router.js'
+import { createMockAdapter } from '../../src/models/mock.js'
+import type { ModelAdapter } from '../../src/models/types.js'
 import { createUser, teardown } from '../helpers/db.js'
 
 /**
@@ -239,5 +242,74 @@ describe('第二次使用的分水岭 —— H5', () => {
     const footprints = await repo.listFootprints(userId, 5)
 
     expect(footprints[0]?.question_count).toBe(2)
+  })
+})
+
+describe('口吻守卫触发重写 —— 规格 03 §9.1「命中即打回重写」', () => {
+  /** 按调用次数依次返回预设文本的适配器 */
+  const scriptedAdapter = (replies: readonly string[]): ModelAdapter => {
+    let call = 0
+    return {
+      name: 'mock',
+      async complete(request) {
+        const text = replies[Math.min(call, replies.length - 1)] ?? ''
+        call += 1
+        return {
+          text, provider: 'mock', task: request.task, latencyMs: 1,
+          tokensIn: 10, tokensOut: 20, reasoningTokens: 0, costCny: 0, cached: false,
+        }
+      },
+      async recognize() {
+        return { candidates: [], provider: 'mock', latencyMs: 1, costCny: 0 }
+      },
+    }
+  }
+
+  afterAll(() => {
+    // 把共享的 mock 适配器还原，避免污染同文件的其他用例
+    registerAdapter(createMockAdapter())
+  })
+
+  test('连说三句事实会被打回重写一次，并采用重写结果', async () => {
+    const dump = '号舍有两块木板。考试持续九天。监考在明远楼。'
+    const good = '号舍有两块木板，你张开手臂就知道有多窄。'
+    registerAdapter(scriptedAdapter([dump, good]))
+    const userId = await createUser()
+    const journey = await openAndArrive(userId)
+
+    const turn = await onQuestion({
+      journeyId: journey.id, text: '号舍多大', poiId: POI,
+    })
+
+    expect(turn.text).toBe(good)
+    expect(turn.usedElements).toContain('model:qa:rewrite')
+    expect(turn.guardViolations).toEqual([])
+  })
+
+  test('一次通过时不触发重写，不浪费一次调用', async () => {
+    registerAdapter(scriptedAdapter(['号舍有两块木板，你张开手臂就知道有多窄。']))
+    const userId = await createUser()
+    const journey = await openAndArrive(userId)
+
+    const turn = await onQuestion({
+      journeyId: journey.id, text: '号舍多大', poiId: POI,
+    })
+
+    expect(turn.usedElements).toEqual(['model:qa'])
+  })
+
+  test('重写后仍然命中时带着记录输出，不无限重试', async () => {
+    const dump = '号舍有两块木板。考试持续九天。监考在明远楼。'
+    registerAdapter(scriptedAdapter([dump, dump]))
+    const userId = await createUser()
+    const journey = await openAndArrive(userId)
+
+    const turn = await onQuestion({
+      journeyId: journey.id, text: '号舍多大', poiId: POI,
+    })
+
+    expect(turn.spoke).toBe(true)
+    expect(turn.guardViolations.length).toBeGreaterThan(0)
+    expect(turn.usedElements).toContain('model:qa:rewrite')
   })
 })

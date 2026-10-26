@@ -21,7 +21,8 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint:content": "tsx src/content/lint.ts"
+    "lint:content": "tsx src/content/lint.ts",
+    "models:probe": "tsx src/models/probe.ts"
   },
   "dependencies": {
     "fastify": "5.2.1",

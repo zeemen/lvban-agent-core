@@ -83,6 +83,16 @@ const runJourney = async (input: {
       })
       console.log(`\n  你   > ${q}`)
       console.log(`  旅伴 > ${turn.text}`)
+      const shape = [
+        `${(turn.text ?? '').length} 字`,
+        `上限 ${turn.plan?.maxChars}`,
+        (turn.text ?? '').includes('\n') ? '⚠ 含换行' : '单段',
+        turn.usedElements.includes('model:qa:rewrite') ? '口吻守卫触发了一次重写' : '一次通过',
+      ].join(' · ')
+      console.log(`  └─ 形态：${shape}`)
+      if (turn.guardViolations.length > 0) {
+        console.log(`  └─ ⚠ 口吻守卫命中：${turn.guardViolations.join(', ')}`)
+      }
     }
   }
 

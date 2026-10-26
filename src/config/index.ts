@@ -13,8 +13,32 @@ export const config = {
   redisUrl: required('REDIS_URL'),
   port: Number(required('PORT', '8787')),
   modelProvider: required('MODEL_PROVIDER', 'mock'),
-  modelApiKey: process.env.MODEL_API_KEY ?? '',
+  /** 覆盖供应商档案里的 baseUrl（如百炼的业务空间专属域名） */
+  modelBaseUrl: process.env.MODEL_BASE_URL,
 } as const
+
+/**
+ * API Key 解析：优先供应商专属环境变量（DASHSCOPE_API_KEY 等），
+ * 其次通用的 MODEL_API_KEY。这样同时配多家时互不冲突。
+ */
+export const resolveApiKey = (
+  apiKeyEnv: string, env: NodeJS.ProcessEnv = process.env,
+): string => env[apiKeyEnv] ?? env.MODEL_API_KEY ?? ''
+
+/**
+ * 按任务挑供应商：MODEL_PROVIDER_<TASK> 优先，MODEL_PROVIDER 兜底。
+ *
+ * 存在的理由：视觉和文本的最优供应商未必是同一家。
+ * 例如文本走 DeepSeek、视觉走通义千问的 qwen-vl-max——
+ * 规格 03 §7 的 Model Router 本来就是「不绑定单一模型」。
+ */
+export const resolveProviderFor = (
+  task: string, env: NodeJS.ProcessEnv = process.env,
+): string => {
+  const override = env[`MODEL_PROVIDER_${task.toUpperCase()}`]
+  if (override !== undefined && override !== '') return override
+  return env.MODEL_PROVIDER ?? 'mock'
+}
 
 /** 规格 01 §4.3：蒸馏阈值全部外置，待真实数据校准 */
 export const distillation = {

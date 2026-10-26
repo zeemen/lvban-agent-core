@@ -78,13 +78,87 @@ node --run coverage
 
 对应的测试在 `tests/integration/gateway.test.ts`，包括「绕过网关直接写库也会被数据库约束拦住」。
 
+## 接真实模型
+
+三家国内供应商（通义千问 / 豆包 / DeepSeek）都提供 OpenAI 兼容的 chat completions 接口，
+所以这里是**一个适配器 + 一张供应商档案表**（`src/models/providers.ts`），不是三个适配器。
+
+```bash
+node --run models:probe                 # 不带 Key：列出三家的档案与接入要点
+# 在 .env 里设 MODEL_PROVIDER 与对应的 Key，然后：
+node --run models:probe                 # 带 Key：列出账号可用模型 + 逐任务连通性
+node --run models:probe <图片路径>       # 单独测视觉链路的候选集约束识别
+```
+
+**模型 ID 刻意不写死。** 核实档案时发现 DeepSeek 官方文档已把 `deepseek-chat` 换成
+`deepseek-flash` / `deepseek-v4-pro`，旧名虽被接受但模型已下线——模型 ID 的变动频率
+远高于代码发布频率。所以档案里的只是「上次核实时的默认值」，一律可用
+`MODEL_ID_<TASK>` 覆盖，并用 probe 去问供应商本人。火山引擎方舟必须逐项配置，
+因为它的 `model` 字段填的是账号自己的推理接入点 ID（`ep-xxxx`）。
+
+**视觉能力是模型的属性，不是供应商的属性。** 同一个 DeepSeek 账号，
+`deepseek-flash` 接受图像输入，`deepseek-v4-pro` 不接受。所以判定按模型 ID 做
+（`resolveVision`），而不是给供应商打一个布尔值。方舟的接入点 ID 不透明，
+判定为「允许尝试但不确定」，由实际调用暴露问题。
+
+**视觉不可用时降级，不抛错。** 规格 02 §4 的「拍一下 / 问一句」双入口里，
+「拍一下」依赖 VLM。模型选错、没配 `MODEL_ID_VISION`、或者缺 Key 这三种
+「配置根本不可能成功」的情况，都会让 `decideVisionAnchor` 返回
+`fallback_ask` + `fallbackActive: true` + 可读的 `fallbackReason`，
+走的是和 §4.3 命中率熔断同一条降级路径——而不是在用户按下快门之后才报错。
+
+**按任务分供应商。** `MODEL_PROVIDER_VISION` 等变量可以让文本走一家、视觉走另一家
+（例如文本 DeepSeek + 视觉 `qwen-vl-max`），这本来就是规格 03 §7「不绑定单一模型」的要求。
+
+**价格没核实就不写。** 第三方来源互相矛盾的价格一律不入代码；没有 pricing 的档案，
+账本只统计 token 数、`costCny` 返回 `null`，并在 `unpricedCalls` 里计数。
+宁可没有数字，不要有错的数字。DeepSeek 还分高峰/空闲时段计价（空闲为高峰一半），
+这恰好说明静态价格表必然有一半时间是错的。
+
+Key 到位后的验收：
+
+```bash
+PROBE_PROVIDER=deepseek npx vitest run tests/integration/adapter-contract.test.ts
+```
+
+`tests/integration/adapter-contract.test.ts` 里那套契约断言会同时跑 mock 和真实供应商
+（没配 `PROBE_PROVIDER` 时自动跳过真实那组）。测试进程默认把 `MODEL_PROVIDER` 钉成
+`mock`，所以常规 `node --run test` **不会**去打收费接口，也不会因为谁改了 `.env` 而行为不同。
+
+### DeepSeek 实测结论（2026-10-25）
+
+账号可用模型就是 `deepseek-flash` 与 `deepseek-v4-pro` 两个，与文档一致。
+
+**两个模型都是推理模型**，这件事对本产品有三层影响：
+
+1. **思维链 token 算在 `max_tokens` 里，且计费。** 回一句「收到」用掉 31–47 个输出
+   token，其中 94% 以上是思维链；JSON 规划调用约 104 推理 token。所以规格 03 §2 的
+   分龄长度（低龄 90 token）不能直接当 `max_tokens` 发出去——否则预算被看不见的推理
+   吃光，`content` 为空、`finish_reason=length`。适配器现在把「回答长度」和「推理余量」
+   分开（`budgetWithReasoning`），并把空回答识别为 `truncated` 错误而不是静默返回空串。
+2. **延迟远超预算。** 实测文本 1.5–2.7s、视觉 1.9s 起（偶尔破 5s），而规格 03 §7 给
+   qa 的预算是 1200ms、vision 是 1500ms。这是**非流式**的总时长。用户站在展品前等
+   3–4 秒静默是产品级失败，所以「流式输出 + 预置垫音」从优化项变成了必做项。
+3. **成本模型要把思维链算进去。** 账本的 `reasoningTokens` 单独记账，`unpricedCalls`
+   统计因价格未核实而无法计价的调用数。
+
+**输出形态必须在 prompt 里显式约束。** 不加约束时 `deepseek-flash` 会输出 3–4 段带
+空行的聊天体；这是语音优先的产品（规格 03：语音流、锁屏可听），分段加空行既不像
+「一个人在你旁边说话」，TTS 念出来也很怪。现在 system prompt 明确要求「只说一段话、
+不分段、不空行、不用 Markdown」，实测输出降到 132–162 字的单段口语。
+
+**没有 embedding 模型。** 规格 01 §5.3 的记忆检索最终要用向量相似度，目前用主题
+重叠度代替，不阻塞；真要上 embedding 需另配一家。
+
 ## 还没做
 
-- **真实模型**：当前只有 mock 适配器。接通义千问 / 豆包 / DeepSeek = 在 `src/models/` 下新增一个实现 `ModelAdapter` 的文件并注册。
+- **流式输出**：规格 03 §7 要求 TTS 首句 ≤600ms，真正落地要把适配器改成 SSE 流式分句。
+  现在没有消费流的前端，先不提前抽象。
+- **ASR / TTS**：规格 03 的语音链路尚未接入。
 - **锚点内容**：只录了 2 个样例锚点（江南贡院号舍、错金银重络铜壶），且审校状态为 `draft`。南博 18 件 / 夫子庙 12 处的最终名单待内容负责人核定，选点标准见规格 04 §4.3。
 - **围栏坐标**：`content/geofences/fuzimiao.json` 里是占位值，`calibrated: false`。必须按规格 02 §9.3 现场实测后替换。
 - **小程序前端**：M3。
-- **ASR / TTS、兑换码、大使后台、运营后台**：按规格 04 排期。
+- **兑换码、大使后台、运营后台**：按规格 04 排期。
 
 ## 环境
 

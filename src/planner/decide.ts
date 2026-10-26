@@ -28,6 +28,8 @@ export type PlanDecision = {
   readonly nextAction: string | null
   readonly evidenceRequired: readonly string[]
   readonly maxTokens: number
+  /** 规格 03 §2 的单段字数上限。给模型下指令要用字数，token 数它理解不了 */
+  readonly maxChars: number
   readonly reason: string
 }
 
@@ -57,6 +59,18 @@ const MAX_TOKENS_BY_AGE: Record<AgeBand, number> = {
   '25_plus': 220,
   unknown: 180,
 }
+
+/** 规格 03 §2 的单段长度（字）。注意是**单段**：不分段、不空行 */
+const MAX_CHARS_BY_AGE: Record<AgeBand, number> = {
+  under_12: 80,
+  '12_15': 150,
+  '16_18': 220,
+  '19_24': 220,
+  '25_plus': 220,
+  unknown: 180,
+}
+
+const SHORT_LENGTH_RATIO = 0.5
 
 const CURRICULUM_AGE_BANDS = new Set<AgeBand>(['12_15'])
 const REASK_LIMIT = 2
@@ -140,6 +154,9 @@ export const decidePlan = (
       : anchor?.elements.nextAction.suggest ?? null,
     evidenceRequired: anchor === null ? [] : ['anchor.k1Sources'],
     maxTokens: MAX_TOKENS_BY_AGE[ctx.ageBand],
+    maxChars: length === 'short'
+      ? Math.round(MAX_CHARS_BY_AGE[ctx.ageBand] * SHORT_LENGTH_RATIO)
+      : MAX_CHARS_BY_AGE[ctx.ageBand],
     reason: reasons.join(' + ') || 'default',
   }
 }

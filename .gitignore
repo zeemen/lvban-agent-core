@@ -8,4 +8,5 @@ coverage/
 
 # 工具缓存与本地配置
 graft/
+.ignore
 .claude/settings.local.json

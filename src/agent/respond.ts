@@ -176,21 +176,56 @@ export const onQuestion = async (input: {
     heardBefore: [],
   })
 
+  /*
+   * 输出形态的约束和内容的约束一样重要：
+   * 这是语音优先的产品（规格 03：语音流、锁屏可听），分段加空行的文本
+   * 既不像「一个人在你旁边说话」，TTS 念出来也很怪。
+   * 实测 deepseek-flash 不加这段约束会输出 3–4 段带空行的聊天体。
+   */
   const system = [
-    `你是旅伴 agent，当前模式 ${ctx.mode}，口吻档位 ${plan.register}，`,
-    `用户年龄段 ${ctx.ageBand}，输出不超过 ${plan.maxTokens} token。`,
-    anchor === null ? '' : `当前锚点：${anchor.name}。只能使用已审校的资料，无据可查时明确说不确定。`,
-    ctx.memoryHooks.length === 0 ? '' : `可引用的记忆线索：${ctx.memoryHooks.join('；')}。`,
+    `你是旅伴 agent，一个陪用户旅行的同伴，不是客服也不是讲解器。`,
+    `当前模式 ${ctx.mode}，口吻档位 ${plan.register}，用户年龄段 ${ctx.ageBand}。`,
+    `【输出形态】只说一段话，${plan.maxChars} 字以内；`,
+    `不分段、不空行、不用任何 Markdown 标记、不用「简单说」「首先」这类书面连接词；`,
+    `像在现场开口说话，不像写文章。`,
+    anchor === null
+      ? ''
+      : `【当前位置】${anchor.name}。`,
+    `【证据纪律】年代、名称、尺寸、出土地点、人物关系、历史事件必须有据可查；`,
+    `没有把握就直接说不确定，并把人引向现场说明牌，不要含糊其辞、不要编。`,
+    ctx.memoryHooks.length === 0
+      ? ''
+      : `【可引用的记忆】${ctx.memoryHooks.join('；')}。自然地接上，不要生硬复述。`,
   ].join('')
 
-  const result = await complete({
+  const first = await complete({
     task: 'qa',
     system,
     user: input.text,
     maxTokens: plan.maxTokens,
   })
 
-  const guard = checkRegister(result.text, plan.register)
+  /*
+   * 规格 03 §9.1：口吻守卫命中即打回重写，不是只告警。
+   * 实测 deepseek-flash 会连说三句事实而不对用户开口一次（too_many_facts），
+   * 只记日志的话这种退化会一路漏到用户耳朵里。
+   * 重写只给一次机会：再不过就带着命中记录输出，由运营后台看见。
+   */
+  const firstGuard = checkRegister(first.text, plan.register)
+  const rewritten = firstGuard.ok
+    ? null
+    : await complete({
+        task: 'qa',
+        system: `${system}【重写要求】上一版违反了口吻规则：` +
+          `${firstGuard.violations.map((v) => v.rule).join('、')}。` +
+          `不要连续陈述三句事实，每两句事实之间至少有一句对用户开口` +
+          `（提问、类比、或者用「你」直接说）。仍然只说一段话，${plan.maxChars} 字以内。`,
+        user: input.text,
+        maxTokens: plan.maxTokens,
+      })
+
+  const result = rewritten ?? first
+  const guard = rewritten === null ? firstGuard : checkRegister(rewritten.text, plan.register)
 
   await writeMemory({
     kind: 'interaction',
@@ -201,7 +236,12 @@ export const onQuestion = async (input: {
     content: result.text,
     anchorId: anchor?.anchorId ?? null,
     topicTags: anchor?.topics ?? [],
-    evidenceRefs: { provider: result.provider, costCny: result.costCny },
+    evidenceRefs: {
+      provider: result.provider,
+      costCny: result.costCny,
+      reasoningTokens: result.reasoningTokens,
+      rewritten: rewritten !== null,
+    },
     occurredAt: new Date(),
   })
   await recordSpoke(input.journeyId, new Date())
@@ -213,7 +253,7 @@ export const onQuestion = async (input: {
     vetoedBy: null,
     plan,
     text: result.text,
-    usedElements: ['model:qa'],
+    usedElements: rewritten === null ? ['model:qa'] : ['model:qa', 'model:qa:rewrite'],
     guardViolations: guard.violations.map((v) => `${v.rule}:${v.matched}`),
     context: ctx,
     fromCache: false,

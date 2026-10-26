@@ -1,3 +1,4 @@
+import { resolve, sep } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
@@ -14,6 +15,8 @@ import { distillJourney } from '../memory/distill.js'
 import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
 import { readLedger } from '../models/router.js'
+import { CACHE_DIR, readCached } from '../tts/cache.js'
+import { ttsAvailability } from '../tts/availability.js'
 import { decideVisionAnchor, recordVisionOutcome, visionHitRate } from '../vision/anchor.js'
 
 /** HTTP 接口 —— 规格 02 §8、01 §5.5、01 §7。M3 小程序接的就是这一套。 */
@@ -163,6 +166,40 @@ export const registerRoutes = (app: FastifyInstance): void => {
   })
 
   app.get('/v1/vision/hit-rate', async () => visionHitRate())
+
+  /**
+   * 取预合成/实时合成的音频。audioKey 由 filler 与 audio 事件给出。
+   *
+   * key 来自客户端，所以必须防路径穿越：解析后必须仍在缓存目录内。
+   * 生产环境这条路由应由 CDN 接管，这里是本地开发与 M3 联调用。
+   */
+  app.get('/v1/audio/*', async (request, reply) => {
+    const raw = (request.params as Record<string, string>)['*'] ?? ''
+    const resolved = resolve(CACHE_DIR, raw)
+    const root = resolve(CACHE_DIR)
+    if (resolved !== root && !resolved.startsWith(`${root}sep`.replace('sep', sep))) {
+      return reply.code(400).send({ error: 'audioKey 越出缓存目录' })
+    }
+
+    const audio = await readCached(resolved)
+    if (audio === null) return reply.code(404).send({ error: '音频未合成', audioKey: raw })
+
+    const type = raw.endsWith('.wav') ? 'audio/wav'
+      : raw.endsWith('.pcm') ? 'audio/L16'
+        : raw.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg'
+    return reply
+      // 内容寻址 + 固定台词：可以放心长缓存
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .type(type)
+      .send(audio)
+  })
+
+  app.get('/v1/tts/status', async () => {
+    const verdict = ttsAvailability()
+    return verdict.available
+      ? { available: true, provider: verdict.provider }
+      : { available: false, reason: verdict.reason }
+  })
 
   app.get('/internal/memory/hooks', async (request) => {
     const query = z.object({

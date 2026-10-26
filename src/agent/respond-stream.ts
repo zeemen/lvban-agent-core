@@ -9,6 +9,9 @@ import { stream } from '../models/router.js'
 import { decidePlan, type PlanDecision } from '../planner/decide.js'
 import { checkRegister } from '../planner/register-guard.js'
 import { createSentenceSplitter } from '../planner/sentence.js'
+import { ttsAvailability } from '../tts/availability.js'
+import { pickTtsAdapter, synthesize, ttsProvider } from '../tts/router.js'
+import { resolveVoice } from '../tts/voices.js'
 import { buildAnswerSystemPrompt } from './prompt.js'
 
 /**
@@ -29,6 +32,19 @@ import { buildAnswerSystemPrompt } from './prompt.js'
 export type StreamedEvent =
   | { readonly type: 'filler'; readonly text: string; readonly audioKey: string; readonly fillerId: string }
   | { readonly type: 'sentence'; readonly index: number; readonly text: string; readonly atMs: number }
+  /**
+   * 这一句的语音已就绪。刻意**不内联音频字节**：SSE 里塞 base64 会让
+   * 事件流变重，而且没法交给 CDN。客户端拿 audioKey 去 /v1/audio/ 取。
+   */
+  | {
+      readonly type: 'audio'
+      readonly index: number
+      readonly audioKey: string
+      readonly durationMs: number | null
+      readonly cached: boolean
+      readonly synthMs: number
+      readonly atMs: number
+    }
   | { readonly type: 'delta'; readonly text: string }
   | {
       readonly type: 'done'
@@ -47,14 +63,57 @@ export type Timing = {
   readonly firstDeltaMs: number | null
   /** 第一句话凑齐、可以送 TTS 的时刻 */
   readonly firstSentenceMs: number | null
+  /** 第一句语音就绪、可以播放的时刻。TTS 未配置时为 null */
+  readonly firstAudioMs: number | null
   readonly totalMs: number
   readonly sentences: number
+  readonly ttsProvider: string | null
 }
 
 let anchorCache: ReadonlyMap<string, Anchor> | null = null
 const anchors = async (): Promise<ReadonlyMap<string, Anchor>> => {
   anchorCache ??= await loadAnchors()
   return anchorCache
+}
+
+/**
+ * 合成一句话的语音并发出 audio 事件，返回就绪时刻。
+ *
+ * TTS 不可用时静默跳过——此时产品降级为「只显示文字」，
+ * 而不是让整条应答失败（与规格 02 §4.3 视觉降级同一思路）。
+ *
+ * 合成是内联 await 的：第一句由垫音掩护，第二句往后在用户听前一句时合成，
+ * 都不在关键路径上。真正的风险是单句合成慢到拖住模型流，所以单句出错只跳过这一句。
+ */
+async function* synthesizeSentence(
+  text: string,
+  index: number,
+  voice: { readonly voice: string; readonly speedRatio: number },
+  since: () => number,
+): AsyncGenerator<StreamedEvent, number | null> {
+  if (!ttsAvailability().available) return null
+
+  const startedAt = since()
+  try {
+    const result = await synthesize(
+      { text, voice: voice.voice, speedRatio: voice.speedRatio, encoding: 'mp3' },
+    )
+    if (result === null) return null
+    const atMs = since()
+    yield {
+      type: 'audio',
+      index,
+      audioKey: result.path.split('audio-cache/')[1] ?? result.path,
+      durationMs: result.durationMs,
+      cached: result.cached,
+      synthMs: atMs - startedAt,
+      atMs,
+    }
+    return atMs
+  } catch {
+    // 一句合成失败不该让整段回答断掉；文字已经发出去了
+    return null
+  }
 }
 
 export type StreamQuestionInput = {
@@ -138,10 +197,15 @@ export async function* streamQuestion(
     })
   }
 
-  const splitter = createSentenceSplitter()
+  const ttsVerdict = ttsAvailability()
+  // 按 TTS 适配器的上限切分：腾讯 150 汉字是硬上限，超了会被直接拒绝
+  const maxChars = ttsVerdict.available ? pickTtsAdapter().maxChars : undefined
+  const splitter = createSentenceSplitter({ maxChars })
+  const voice = resolveVoice(plan.register, ttsProvider())
   let full = ''
   let firstDeltaMs: number | null = null
   let firstSentenceMs: number | null = null
+  let firstAudioMs: number | null = null
 
   try {
     for await (const event of stream({
@@ -157,16 +221,19 @@ export async function* streamQuestion(
         yield { type: 'delta', text: event.text }
         for (const sentence of splitter.push(event.text)) {
           firstSentenceMs ??= since()
-          yield {
-            type: 'sentence', index: splitter.count - 1,
-            text: sentence, atMs: since(),
-          }
+          const index = splitter.count - 1
+          yield { type: 'sentence', index, text: sentence, atMs: since() }
+          const audio = yield* synthesizeSentence(sentence, index, voice, since)
+          if (audio !== null) firstAudioMs ??= audio
         }
       }
     }
     for (const sentence of splitter.flush()) {
       firstSentenceMs ??= since()
-      yield { type: 'sentence', index: splitter.count - 1, text: sentence, atMs: since() }
+      const index = splitter.count - 1
+      yield { type: 'sentence', index, text: sentence, atMs: since() }
+      const audio = yield* synthesizeSentence(sentence, index, voice, since)
+      if (audio !== null) firstAudioMs ??= audio
     }
   } catch (error) {
     yield {
@@ -203,8 +270,10 @@ export async function* streamQuestion(
       fillerAtMs,
       firstDeltaMs,
       firstSentenceMs,
+      firstAudioMs,
       totalMs: since(),
       sentences: splitter.count,
+      ttsProvider: ttsVerdict.available ? ttsVerdict.provider : null,
     },
   }
 }

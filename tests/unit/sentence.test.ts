@@ -69,3 +69,46 @@ describe('createSentenceSplitter', () => {
     expect(s.flush()).toEqual([])
   })
 })
+
+describe('单句长度上限 —— 腾讯云 150 汉字是硬上限', () => {
+  test('超过上限且没有句末标点时在逗号处强制断开', () => {
+    const s = createSentenceSplitter({ maxChars: 20 })
+
+    const out = s.push('这是一段很长的话里面有逗号，后面还有更多内容继续写下去不停')
+
+    expect(out.length).toBeGreaterThan(0)
+    for (const sentence of out) expect(sentence.length).toBeLessThanOrEqual(20)
+  })
+
+  test('强制断开优先选逗号，而不是硬切字数', () => {
+    const s = createSentenceSplitter({ maxChars: 12 })
+
+    const out = s.push('前面一句话，后面还有很多很多内容')
+
+    expect(out[0]).toBe('前面一句话，')
+  })
+
+  test('完全没有标点时按字数硬切，保证不超限', () => {
+    const s = createSentenceSplitter({ maxChars: 10 })
+
+    const out = s.push('啊'.repeat(35))
+
+    expect(out.length).toBeGreaterThanOrEqual(3)
+    for (const sentence of out) expect(sentence.length).toBeLessThanOrEqual(10)
+  })
+
+  test('flush 也遵守上限', () => {
+    const s = createSentenceSplitter({ maxChars: 10 })
+    s.push('这段没有句号但是很长很长很长很长很长')
+
+    for (const sentence of s.flush()) {
+      expect(sentence.length).toBeLessThanOrEqual(10)
+    }
+  })
+
+  test('正常长度的句子不受影响', () => {
+    const s = createSentenceSplitter({ maxChars: 150 })
+
+    expect(s.push('这是一句正常长度的话。')).toEqual(['这是一句正常长度的话。'])
+  })
+})

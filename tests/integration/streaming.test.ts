@@ -1,10 +1,11 @@
-import { afterAll, describe, expect, test } from 'vitest'
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest'
 import { streamQuestion, type StreamedEvent } from '../../src/agent/respond-stream.js'
 import { ingestFixes } from '../../src/context/ingest.js'
 import { startJourney } from '../../src/context/journey.js'
 import { createMockAdapter } from '../../src/models/mock.js'
 import { registerAdapter } from '../../src/models/router.js'
 import type { ModelAdapter } from '../../src/models/types.js'
+import { resetTtsAdapter } from '../../src/tts/router.js'
 import { countRows, createUser, teardown } from '../helpers/db.js'
 
 /**
@@ -231,5 +232,86 @@ describe('记忆写入与降级', () => {
     const error = events.find((e) => e.type === 'error')
     expect(error).toBeDefined()
     if (error?.type === 'error') expect(error.fallbackText).toContain('再问一遍')
+  })
+})
+
+describe('语音链路', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    resetTtsAdapter()
+  })
+
+  test('每句话都跟一个 audio 事件，且紧跟在对应的 sentence 之后', async () => {
+    registerAdapter(chunkedAdapter(['第一句话在这里。', '第二句话也在这里。']))
+    const userId = await createUser()
+    const journey = await openJourney(userId)
+
+    const events = await drain(journey.id)
+    const ordered = events
+      .filter((e) => e.type === 'sentence' || e.type === 'audio')
+      .map((e) => `${e.type}:${e.type === 'sentence' || e.type === 'audio' ? e.index : ''}`)
+
+    expect(ordered).toEqual(['sentence:0', 'audio:0', 'sentence:1', 'audio:1'])
+  })
+
+  test('audio 事件给 audioKey 而不是内联音频字节', async () => {
+    registerAdapter(chunkedAdapter(['一句足够长的回答在这里。']))
+    const userId = await createUser()
+    const journey = await openJourney(userId)
+
+    const events = await drain(journey.id)
+    const audio = events.find((e) => e.type === 'audio')
+
+    expect(audio).toBeDefined()
+    if (audio?.type === 'audio') {
+      expect(audio.audioKey).toMatch(/\.mp3$/)
+      expect(JSON.stringify(audio)).not.toContain('base64')
+    }
+  })
+
+  test('第二次问同样的话命中缓存，不再合成', async () => {
+    registerAdapter(chunkedAdapter(['这是一句会被缓存的回答内容。']))
+    const userId = await createUser()
+    const journey = await openJourney(userId)
+
+    await drain(journey.id, '第一次问')
+    const second = await drain(journey.id, '第二次问')
+    const audio = second.find((e) => e.type === 'audio')
+
+    if (audio?.type === 'audio') expect(audio.cached).toBe(true)
+  })
+
+  test('TTS 未配置时降级为只显示文字，不发 audio 事件也不报错', async () => {
+    vi.stubEnv('TTS_PROVIDER', 'volcengine')
+    vi.stubEnv('VOLC_TTS_APP_ID', '')
+    vi.stubEnv('VOLC_TTS_ACCESS_TOKEN', '')
+    registerAdapter(chunkedAdapter(['一句足够长的回答在这里。']))
+    const userId = await createUser()
+    const journey = await openJourney(userId)
+
+    const events = await drain(journey.id)
+
+    expect(events.filter((e) => e.type === 'audio')).toHaveLength(0)
+    expect(events.filter((e) => e.type === 'sentence').length).toBeGreaterThan(0)
+    const done = events.find((e) => e.type === 'done')
+    if (done?.type === 'done') {
+      expect(done.timing.ttsProvider).toBeNull()
+      expect(done.timing.firstAudioMs).toBeNull()
+    }
+  })
+
+  test('时序里记下第一句语音就绪的时刻', async () => {
+    registerAdapter(chunkedAdapter(['一句足够长的回答在这里。']))
+    const userId = await createUser()
+    const journey = await openJourney(userId)
+
+    const events = await drain(journey.id)
+    const done = events.find((e) => e.type === 'done')
+
+    if (done?.type === 'done') {
+      expect(done.timing.firstAudioMs).not.toBeNull()
+      expect(done.timing.firstAudioMs ?? 0)
+        .toBeGreaterThanOrEqual(done.timing.firstSentenceMs ?? 0)
+    }
   })
 })

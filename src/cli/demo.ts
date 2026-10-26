@@ -91,12 +91,18 @@ const runJourney = async (input: {
           console.log(`  旅伴 > ${ev.text}   ← 第一句 ${ev.atMs}ms，已可送 TTS`)
         }
         if (ev.type === 'sentence' && ev.index > 0) console.log(`         ${ev.text}`)
+        if (ev.type === 'audio') {
+          const tag = ev.cached ? '缓存命中' : `合成 ${ev.synthMs}ms`
+          console.log(`         🔊 第 ${ev.index + 1} 句语音就绪 ${ev.atMs}ms（${tag}，${ev.durationMs ?? '?'}ms 时长）`)
+        }
         if (ev.type === 'error') console.log(`  ⚠ ${ev.message} → ${ev.fallbackText}`)
         if (ev.type === 'done') {
           answer = ev.text
           const t = ev.timing
           console.log(`  └─ 时序：垫音 ${t.fillerAtMs}ms · 首个正文 ${t.firstDeltaMs}ms`
-            + ` · 第一句 ${t.firstSentenceMs}ms · 全部 ${t.totalMs}ms · ${t.sentences} 句`)
+            + ` · 第一句文本 ${t.firstSentenceMs}ms · 第一句语音 ${t.firstAudioMs ?? '—'}ms`
+            + ` · 全部 ${t.totalMs}ms · ${t.sentences} 句`)
+          console.log(`  └─ TTS：${t.ttsProvider ?? '未配置（只显示文字）'}`)
           console.log(`  └─ 形态：${answer.length} 字 · 上限 ${ev.plan.maxChars}`
             + ` · ${answer.includes('\n') ? '⚠ 含换行' : '单段'}`)
           if (ev.guardViolations.length > 0) {

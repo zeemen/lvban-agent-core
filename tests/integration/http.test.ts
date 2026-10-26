@@ -246,6 +246,43 @@ describe('视觉接口', () => {
   })
 })
 
+describe('音频接口', () => {
+  test('TTS 状态可查', async () => {
+    const res = await app.inject({ method: 'GET', url: '/v1/tts/status' })
+
+    expect(res.statusCode).toBe(200)
+    expect(json<{ available: boolean }>(res.payload).available).toBe(true)
+  })
+
+  test('取未合成的音频返回 404 而不是 500', async () => {
+    const res = await app.inject({ method: 'GET', url: '/v1/audio/fillers/nope.mp3' })
+
+    expect(res.statusCode).toBe(404)
+  })
+
+  test.each([
+    '/v1/audio/../../.env',
+    '/v1/audio/..%2f..%2f.env',
+    '/v1/audio/fillers/../../../package.json',
+  ])('拒绝路径穿越：%s', async (url) => {
+    const res = await app.inject({ method: 'GET', url })
+
+    // 400 拒绝，或 404 未命中；绝不能 200 返回仓库里的文件
+    expect([400, 404]).toContain(res.statusCode)
+    expect(res.payload).not.toContain('DATABASE_URL')
+    expect(res.payload).not.toContain('lvban-agent-core')
+  })
+
+  test('命中的音频带长缓存头', async () => {
+    const res = await app.inject({ method: 'GET', url: '/v1/audio/fillers/peer_q_01.mp3' })
+
+    if (res.statusCode === 200) {
+      expect(res.headers['cache-control']).toContain('immutable')
+      expect(res.headers['content-type']).toContain('audio/mpeg')
+    }
+  })
+})
+
 describe('用户权利接口 —— 规格 01 §7', () => {
   test('我的记忆分层返回，偏好带 why 字段', async () => {
     const userId = await createUser()

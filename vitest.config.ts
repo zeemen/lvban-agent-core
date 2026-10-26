@@ -32,6 +32,7 @@ export default defineConfig({
         'src/content/seed.ts',
         'src/content/lint.ts',
         'src/models/probe.ts',
+        'src/tts/presynth.ts',
       ],
       thresholds: { lines: 80, functions: 80, branches: 75, statements: 80 },
     },

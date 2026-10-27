@@ -29,6 +29,29 @@ describe('classifyHttpStatus', () => {
   })
 })
 
+describe('超时分类', () => {
+  test('读响应体时超时归为 timeout，而不是「响应不是合法 JSON」', async () => {
+    // AbortSignal.timeout 覆盖整个响应生命周期：头回来得及、体没读完也会中断，
+    // 这一下会落在 response.json() 的 catch 里
+    const aborted = Object.assign(new Error('The operation was aborted due to timeout'), {
+      name: 'TimeoutError',
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => { throw aborted },
+      text: async () => '',
+    }))
+
+    const error = await postJson({
+      url: 'https://x/v1/chat/completions', apiKey: 'k', body: {},
+      timeoutMs: 1000, provider: 'deepseek',
+    }).catch((e: unknown) => e)
+
+    expect((error as ModelError).kind).toBe('timeout')
+    expect((error as ModelError).message).not.toContain('不是合法 JSON')
+  })
+})
+
 describe('postJson 重试', () => {
   test('成功时不重试', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }))

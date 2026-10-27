@@ -1,5 +1,5 @@
 import { resolve, sep } from 'node:path'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import { onArrive, onQuestion } from '../agent/respond.js'
@@ -10,8 +10,16 @@ import { decideProactivity } from '../context/proactivity.js'
 import { buildContextState } from '../context/state.js'
 import { loadAnchors } from '../content/loader.js'
 import { pool } from '../db/pool.js'
-import { MODES, PARTIES, TRACK_CONSENTS } from '../domain/enums.js'
+import {
+  AGE_BANDS, MODES, PARTIES, PREFERENCE_DIMENSIONS, TRACK_CONSENTS,
+} from '../domain/enums.js'
 import { distillJourney } from '../memory/distill.js'
+import { getProfile, updateProfile } from '../memory/profile.js'
+import {
+  deleteAllMemory, deleteMemory, exportMemory, getMemoryWhy, patchMemory,
+} from '../memory/rights.js'
+import { generateTravelogue } from '../agent/travelogue.js'
+import { writeMemory } from '../memory/gateway.js'
 import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
 import { readLedger } from '../models/router.js'
@@ -19,7 +27,9 @@ import { CACHE_DIR, readCached } from '../tts/cache.js'
 import { code2Session } from '../auth/wx.js'
 import { bearerToken, createSession, revokeSession } from '../auth/session.js'
 import { isAuthRequired, requireWxConfig } from '../auth/policy.js'
-import { currentUser, registerAuthHook, requireJourneyOwner, requireSelf } from './auth.js'
+import {
+  AuthError, currentUser, registerAuthHook, requireJourneyOwner, requireLogin, requireSelf,
+} from './auth.js'
 import { classifyError } from './errors.js'
 import { checkDependencies } from './health.js'
 import { ttsAvailability } from '../tts/availability.js'
@@ -40,6 +50,25 @@ const fixSchema = z.object({
   lat: z.number(), lng: z.number(),
   accuracyM: z.number(), at: z.string(), speedMps: z.number().optional(),
 })
+
+/** 分层展示（规格 01 §7）。两条路由共用：/me/memory 与 /me/:userId/memory */
+const readMemory = async (userId: string) => {
+  const [preferences, traits, footprints] = await Promise.all([
+    repo.listPreferences(userId),
+    repo.listIdentityTraits(userId),
+    repo.listFootprints(userId, 30),
+  ])
+  return {
+    identity: traits,
+    preferences: preferences.map((p) => ({
+      id: p.id, dimension: p.dimension, value: p.value,
+      strength: Number(p.strength), status: p.status,
+      journeyCount: p.journey_count, source: p.source,
+      why: p.evidence_refs,
+    })),
+    footprints,
+  }
+}
 
 export const registerRoutes = (app: FastifyInstance): void => {
   registerAuthHook(app)
@@ -305,24 +334,143 @@ export const registerRoutes = (app: FastifyInstance): void => {
     return decideProactivity(ctx, body.trigger)
   })
 
+  /** PRD U02：3 分钟建档。三个问题都可跳过，未作答的字段保持原样 */
+  app.get('/me/profile', async (request) => {
+    const profile = await getProfile(requireLogin(request))
+    if (profile === null) throw new Error('档案不存在')
+    return profile
+  })
+
+  /**
+   * PATCH 与 PUT 指向同一个处理函数。
+   * 原因：wx.request 的 method 合法值只有
+   * OPTIONS/GET/HEAD/POST/PUT/DELETE/TRACE/CONNECT —— 没有 PATCH，
+   * 小程序发不出 PATCH 请求。规格写的是 PATCH，所以两个都留着。
+   */
+  const patchProfile = async (request: FastifyRequest) => {
+    const userId = requireLogin(request)
+    const body = z.object({
+      nickname: z.string().min(1).max(20).optional(),
+      ageBand: z.enum(AGE_BANDS).optional(),
+      defaultMode: z.enum(MODES).optional(),
+      voicePref: z.enum(['voice', 'text']).optional(),
+    }).parse(request.body)
+    await updateProfile(userId, body)
+    return getProfile(userId)
+  }
+  app.patch('/me/profile', patchProfile)
+  app.put('/me/profile', patchProfile)
+
+  /** 首页：最近的旅程，用来决定「继续上次」还是「开始新的」 */
+  app.get('/me/journeys', async (request) => {
+    const userId = requireLogin(request)
+    const { rows } = await pool.query<{
+      id: string; scene_id: string; state: string; mode: string
+      started_at: Date; ended_at: Date | null; distilled_at: Date | null
+    }>(
+      `SELECT id, scene_id, state, mode, started_at, ended_at, distilled_at
+         FROM journey WHERE user_id = $1 AND state <> 'PURGED'
+        ORDER BY started_at DESC LIMIT 20`,
+      [userId],
+    )
+    return {
+      journeys: rows.map((r) => ({
+        journeyId: r.id, sceneId: r.scene_id, state: r.state, mode: r.mode,
+        startedAt: r.started_at.toISOString(),
+        endedAt: r.ended_at?.toISOString() ?? null,
+        hasTravelogue: r.distilled_at !== null,
+      })),
+    }
+  })
+
+  /** 行后游记（规格 04 §7.1）。史实只取已审校锚点，未过审的会被排除并计数 */
+  app.get('/v1/journeys/:id/travelogue', async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
+    const query = z.object({
+      allowDraftAnchors: z.enum(['true', 'false']).optional(),
+    }).parse(request.query)
+    return generateTravelogue(id, {
+      allowDraftAnchors: query.allowDraftAnchors === 'true',
+    })
+  })
+
   /** 规格 01 §7：用户权利接口 */
+  app.get('/me/memory', async (request) => {
+    const userId = requireLogin(request)
+    return readMemory(userId)
+  })
+
+  app.get('/me/memory/:id/why', async (request) => {
+    const userId = requireLogin(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    const why = await getMemoryWhy(userId, id)
+    if (why === null) throw new AuthError(404, '没有这条记忆')
+    return why
+  })
+
+  const patchOneMemory = async (request: FastifyRequest) => {
+    const userId = requireLogin(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    const body = z.object({
+      value: z.string().min(1).max(40).optional(),
+      strength: z.number().min(0).max(1).optional(),
+      status: z.literal('user_removed').optional(),
+    }).parse(request.body)
+    const result = await patchMemory(userId, id, body)
+    if (!result.updated) throw new AuthError(404, '没有这条记忆')
+    return result
+  }
+  app.patch('/me/memory/:id', patchOneMemory)
+  app.put('/me/memory/:id', patchOneMemory)
+
+  /**
+   * 清空全部记忆。确认标记走查询串而不是请求体：
+   * wx.request 的文档只定义了 GET 与 POST 的 data 转换规则，
+   * DELETE 带 body 的行为未定义，不能指望它被序列化成 JSON。
+   */
+  app.delete('/me/memory/all', async (request) => {
+    const userId = requireLogin(request)
+    z.object({ confirm: z.literal('true') }).parse(request.query)
+    return deleteAllMemory(userId)
+  })
+
+  app.delete('/me/memory/:id', async (request) => {
+    const userId = requireLogin(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    const result = await deleteMemory(userId, id)
+    if (!result.deleted) throw new AuthError(404, '没有这条记忆')
+    return result
+  })
+
+  app.post('/me/memory/export', async (request) => exportMemory(requireLogin(request)))
+
+  /**
+   * 确认一条推断出来的偏好（规格 01 D2）。
+   * 推断信号只在 L0，用户点了确认才以 user_confirmed 落 L2 —— 这是红线 1 的正门。
+   */
+  app.post('/me/memory/confirm', async (request) => {
+    const userId = requireLogin(request)
+    const body = z.object({
+      journeyId: z.string().uuid(),
+      dimension: z.enum(PREFERENCE_DIMENSIONS),
+      value: z.string().min(1).max(40),
+    }).parse(request.body)
+    await requireJourneyOwner(request, body.journeyId)
+    const result = await writeMemory({
+      kind: 'signal',
+      userId,
+      journeyId: body.journeyId,
+      dimension: body.dimension,
+      value: body.value,
+      source: 'user_confirmed',
+      occurredAt: new Date(),
+    })
+    return { confirmed: result.ok }
+  })
+
   app.get('/me/:userId/memory', async (request) => {
     const { userId: claimed } = z.object({ userId: z.string().uuid() }).parse(request.params)
-    const userId = requireSelf(request, claimed)
-    const [preferences, traits, footprints] = await Promise.all([
-      repo.listPreferences(userId),
-      repo.listIdentityTraits(userId),
-      repo.listFootprints(userId, 30),
-    ])
-    return {
-      identity: traits,
-      preferences: preferences.map((p) => ({
-        id: p.id, dimension: p.dimension, value: p.value,
-        strength: Number(p.strength), status: p.status,
-        journeyCount: p.journey_count, source: p.source,
-        why: p.evidence_refs,
-      })),
-      footprints,
-    }
+    return readMemory(requireSelf(request, claimed))
   })
 }

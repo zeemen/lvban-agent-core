@@ -1,0 +1,59 @@
+<view class="page">
+
+  <view class="hero">
+    <view class="hero-title">今天想去哪儿逛逛</view>
+    <view class="hero-sub">南京 · 一个人也能逛得有意思</view>
+  </view>
+
+  <view wx:if="{{active}}" class="card resume">
+    <view class="label">有一次旅程还没结束</view>
+    <view class="hint">{{active.sceneName}} · {{active.startedOn}} 开始</view>
+    <button class="primary" bindtap="onContinue">继续这次旅程</button>
+  </view>
+
+  <view class="label">选个场景</view>
+  <view
+    wx:for="{{scenes}}" wx:key="id"
+    class="card scene {{item.ready ? '' : 'soon'}}"
+    data-id="{{item.id}}" bindtap="onStartJourney"
+  >
+    <view class="scene-name">{{item.name}}<text wx:if="{{!item.ready}}" class="sub">即将开放</text></view>
+    <view class="scene-desc">{{item.desc}}</view>
+  </view>
+
+  <view class="label">我的</view>
+  <view class="entries">
+    <view class="entry" bindtap="onProfile">
+      <view class="entry-name">行前建档</view>
+      <view class="entry-desc">三个问题，决定它怎么跟你说话</view>
+    </view>
+    <view class="entry" bindtap="onTravelogue">
+      <view class="entry-name">我的游记</view>
+      <view class="entry-desc">每次旅程之后，用你自己的口吻写一篇</view>
+    </view>
+    <view class="entry" bindtap="onMemory">
+      <view class="entry-name">我的记忆</view>
+      <view class="entry-desc">它记住了什么，每条都能问「为什么」，也能删</view>
+    </view>
+  </view>
+
+  <block wx:if="{{recent.length > 0}}">
+    <view class="label">去过的</view>
+    <view
+      wx:for="{{recent}}" wx:key="journeyId"
+      class="card past" data-id="{{item.journeyId}}" bindtap="onTravelogue"
+    >
+      <view class="past-row">
+        <text>{{item.sceneName}}</text>
+        <text class="sub">{{item.startedOn}}</text>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{!signedIn}}" class="empty">
+    还没登录。可以先随便看看，点「开始」时再授权。
+  </view>
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+
+  <view class="disclaimer">AI 生成内容仅供参考 · AI 服务，非持证导游</view>
+</view>

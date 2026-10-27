@@ -37,6 +37,9 @@ const parseErrorMessage = (text: string): string => {
   }
 }
 
+const isAbort = (error: unknown): boolean =>
+  error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+
 const attemptOnce = async (input: PostJsonInput): Promise<unknown> => {
   let response: Response
   try {
@@ -50,8 +53,7 @@ const attemptOnce = async (input: PostJsonInput): Promise<unknown> => {
       signal: AbortSignal.timeout(input.timeoutMs),
     })
   } catch (error) {
-    const isTimeout = error instanceof Error &&
-      (error.name === 'TimeoutError' || error.name === 'AbortError')
+    const isTimeout = isAbort(error)
     throw new ModelError({
       kind: isTimeout ? 'timeout' : 'network',
       provider: input.provider,
@@ -75,6 +77,17 @@ const attemptOnce = async (input: PostJsonInput): Promise<unknown> => {
   try {
     return await response.json()
   } catch (error) {
+    // AbortSignal.timeout 覆盖的是整个响应生命周期：头及时回来、响应体没读完
+    // 一样会中断，而中断落在这里。不单独认出来的话，长文生成超时会被报成
+    // 「响应不是合法 JSON」，把排查方向指向供应商的响应格式
+    if (isAbort(error)) {
+      throw new ModelError({
+        kind: 'timeout',
+        provider: input.provider,
+        message: `读取响应超时（${input.timeoutMs}ms）：响应头已到，响应体未读完`,
+        cause: error,
+      })
+    }
     throw new ModelError({
       kind: 'parse',
       provider: input.provider,

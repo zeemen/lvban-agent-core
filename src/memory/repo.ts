@@ -173,7 +173,10 @@ export const upsertPreference = async (input: {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
      ON CONFLICT (user_id, dimension, value) DO UPDATE SET
        strength      = EXCLUDED.strength,
-       status        = EXCLUDED.status,
+       -- 用户标过「这不对」的不能被后续蒸馏复活（规格 01 §7.1：
+       -- 「删了却还记得」会直接击穿信任）。identity_trait 那边本来就这么写
+       status        = CASE WHEN preference.status = 'user_removed'
+                            THEN 'user_removed' ELSE EXCLUDED.status END,
        source        = EXCLUDED.source,
        evidence_refs = EXCLUDED.evidence_refs,
        journey_count = EXCLUDED.journey_count,

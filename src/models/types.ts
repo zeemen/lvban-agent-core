@@ -3,7 +3,7 @@ import type { StreamEvent } from './stream.js'
 /** Model Router 契约 —— 规格 03 §7。不绑定单一模型，控制 Quality × Latency × Cost。 */
 
 export const MODEL_TASKS = [
-  'intent', 'qa', 'planner', 'copy', 'vision', 'embedding',
+  'intent', 'qa', 'planner', 'copy', 'travelogue', 'vision', 'embedding',
 ] as const
 export type ModelTask = (typeof MODEL_TASKS)[number]
 
@@ -16,6 +16,9 @@ export const LATENCY_BUDGET_MS: Record<ModelTask, number> = {
   qa: 1200,
   planner: 800,
   copy: 1000,
+  // 游记是几百字的长文，而且不在用户等待的交互路径上（点开之后可以等）。
+  // 和行中一句话文案共用 1000ms 的预算，硬超时只有 5s，必然被掐断
+  travelogue: 15_000,
   vision: 1500,
   embedding: 200,
 }

@@ -1,0 +1,61 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="empty">正在读你的档案…</view>
+
+  <block wx:else>
+    <view class="hint intro">
+      三个问题，决定它用什么口吻跟你说话。都可以跳过，也可以之后再改。
+    </view>
+
+    <view class="card">
+      <view class="label">你多大了</view>
+      <view class="hint">不同年龄段的讲法不一样，未成年人还会多一层保护。</view>
+      <view class="choices">
+        <view
+          wx:for="{{ageBands}}" wx:key="value"
+          class="choice {{profile.ageBand === item.value ? 'on' : ''}}"
+          data-value="{{item.value}}" bindtap="onAgeBand"
+        >{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="label">这次想怎么逛</view>
+      <view class="choices col">
+        <view
+          wx:for="{{modes}}" wx:key="value"
+          class="choice wide {{profile.defaultMode === item.value ? 'on' : ''}}"
+          data-value="{{item.value}}" bindtap="onMode"
+        >
+          <view class="choice-label">{{item.label}}</view>
+          <view class="choice-desc">{{item.desc}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="label">语音还是文字</view>
+      <view class="choices col">
+        <view
+          wx:for="{{voicePrefs}}" wx:key="value"
+          class="choice wide {{profile.voicePref === item.value ? 'on' : ''}}"
+          data-value="{{item.value}}" bindtap="onVoicePref"
+        >
+          <view class="choice-label">{{item.label}}</view>
+          <view class="choice-desc">{{item.desc}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{profile.isMinor}}" class="card minor">
+      按未成年人标准处理：位置提示更保守，消费有限额，监护人可以查看。
+    </view>
+
+    <view wx:if="{{saved}}" class="saved">已保存</view>
+    <view wx:if="{{error}}" class="error">{{error}}</view>
+
+    <view class="footer">
+      <button class="ghost" bindtap="onSkip">跳过，用默认的</button>
+      <button class="primary done" bindtap="onDone">好了</button>
+    </view>
+  </block>
+</view>

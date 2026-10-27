@@ -1,0 +1,67 @@
+<view class="page">
+
+  <!-- 列表 -->
+  <block wx:if="{{!travelogue}}">
+    <view wx:if="{{loading}}" class="empty">正在读你的旅程…</view>
+    <view wx:elif="{{journeys.length === 0}}" class="empty">
+      还没有旅程。逛完一次之后，这里会有一篇用你自己口吻写的游记。
+    </view>
+    <view
+      wx:for="{{journeys}}" wx:key="journeyId"
+      class="card pick" data-id="{{item.journeyId}}" bindtap="onPick"
+    >
+      <view class="pick-row">
+        <text class="pick-name">{{item.sceneName}}</text>
+        <text class="sub">{{item.startedOn}}</text>
+      </view>
+      <view class="pick-state">{{item.state === 'ACTIVE' ? '还在进行中' : '已结束'}}</view>
+    </view>
+  </block>
+
+  <!-- 正文 -->
+  <block wx:else>
+    <view class="card article">
+      <view class="article-text">{{travelogue.text}}</view>
+    </view>
+
+    <view wx:if="{{minutesByPlace.length > 0}}" class="card">
+      <view class="label">走过的地方</view>
+      <view wx:for="{{minutesByPlace}}" wx:key="place" class="fp-row">
+        <text class="fp-place">{{item.place}}</text>
+        <text class="sub">停留约 {{item.minutes}} 分钟 · 问了 {{item.questionCount}} 次</text>
+      </view>
+    </view>
+
+    <view wx:if="{{travelogue.facts.length > 0}}" class="card">
+      <view class="label">文中史实的出处</view>
+      <view wx:for="{{travelogue.facts}}" wx:key="index" class="fact">
+        <view class="fact-text">{{item.text}}</view>
+        <view class="sub">{{item.name}} · {{item.source}}</view>
+      </view>
+    </view>
+    <view wx:elif="{{travelogue.draftAnchorsExcluded > 0}}" class="card note-card">
+      这次去过的 {{travelogue.draftAnchorsExcluded}} 个点位，讲解内容还在审校中，
+      所以这篇游记里没有写任何史实——只写了你走过哪里、说过什么。
+    </view>
+
+    <view wx:if="{{pending.length > 0}}" class="card">
+      <view class="label">要把这些记住吗</view>
+      <view class="hint">默认不记。你点了确认，它才会被记住，之后也随时能删。</view>
+      <view wx:for="{{pending}}" wx:key="value" class="pending">
+        <view class="pending-main">
+          <view class="pending-value">{{item.value}}</view>
+          <view class="sub">{{item.reason}}</view>
+        </view>
+        <button
+          class="{{item.confirmed ? 'ghost' : 'primary'}} confirm"
+          data-index="{{index}}" bindtap="onConfirm" disabled="{{item.confirmed}}"
+        >{{item.confirmed ? '已记下' : '记住'}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{error}}" class="error">{{error}}</view>
+    <button class="ghost" bindtap="onBack">换一次旅程</button>
+  </block>
+
+  <view class="disclaimer">AI 生成内容仅供参考 · AI 服务，非持证导游</view>
+</view>

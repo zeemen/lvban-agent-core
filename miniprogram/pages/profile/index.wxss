@@ -1,0 +1,18 @@
+/* 建档页私有样式。通用版式见 app.wxss */
+.intro { padding: 24rpx 8rpx 8rpx; margin-bottom: 0; }
+
+.choices { display: flex; flex-wrap: wrap; gap: 14rpx; }
+.choices.col { flex-direction: column; }
+
+.choice { font-size: 28rpx; padding: 16rpx 28rpx; background: #f0eade; color: #4a4036; border-radius: 999rpx; }
+.choice.on { background: #2b2622; color: #f3efe7; }
+.choice.wide { border-radius: 14rpx; padding: 22rpx 24rpx; }
+.choice-label { font-size: 29rpx; font-weight: 600; }
+.choice-desc { font-size: 24rpx; opacity: 0.7; margin-top: 8rpx; }
+
+.minor { background: #f6efdf; border-color: #e0d2ae; font-size: 25rpx; color: #6b5c3c; line-height: 1.7; }
+.saved { text-align: center; font-size: 25rpx; color: #5a7a5a; padding: 8rpx 0 16rpx; }
+
+.footer { display: flex; gap: 16rpx; margin-top: 8rpx; }
+.footer .ghost { flex: 1; }
+.footer .done { flex: 1; }

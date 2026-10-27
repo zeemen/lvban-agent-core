@@ -14,6 +14,8 @@ import { createSseParser, toWireEvent } from './sse'
  * 不必每次改动都开模拟器。
  */
 
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
+
 export type ChunkListener = (res: { data: ArrayBuffer }) => void
 
 export type RequestTaskLike = {
@@ -23,7 +25,10 @@ export type RequestTaskLike = {
 
 export type RequestOptions = {
   url: string
-  method?: 'GET' | 'POST' | 'DELETE'
+  // 没有 PATCH：wx.request 的 method 合法值只有
+  // OPTIONS/GET/HEAD/POST/PUT/DELETE/TRACE/CONNECT（官方文档），
+  // 所以服务端把 PATCH 语义的接口同时开了 PUT
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   data?: unknown
   header?: Record<string, string>
   enableChunked?: boolean
@@ -79,6 +84,73 @@ export type ArriveResult = {
   readonly proactivityReason: string
 }
 
+export type Profile = {
+  readonly userId: string
+  readonly nickname: string | null
+  readonly ageBand: string
+  readonly defaultMode: string
+  readonly voicePref: 'voice' | 'text'
+  readonly isMinor: boolean
+}
+
+export type ProfilePatch = {
+  readonly nickname?: string
+  readonly ageBand?: string
+  readonly defaultMode?: string
+  readonly voicePref?: 'voice' | 'text'
+}
+
+export type JourneySummary = {
+  readonly journeyId: string
+  readonly sceneId: string
+  readonly state: string
+  readonly mode: string
+  readonly startedAt: string
+  readonly endedAt: string | null
+  readonly hasTravelogue: boolean
+}
+
+export type MemoryPreference = {
+  readonly id: string
+  readonly dimension: string
+  readonly value: string
+  readonly strength: number
+  readonly status: string
+  readonly journeyCount: number
+  readonly source: string
+}
+
+export type MemoryView = {
+  readonly identity: readonly { trait: string; explanation: string; status: string }[]
+  readonly preferences: readonly MemoryPreference[]
+  readonly footprints: readonly {
+    id: string; place: string; dwell_sec: number
+    question_count: number; occurred_on: string
+  }[]
+}
+
+export type MemoryWhy = {
+  readonly id: string
+  readonly kind: 'preference' | 'identity'
+  readonly label: string
+  readonly evidence: readonly { journeyId: string; quote?: string; at?: string }[]
+  readonly promotion: string
+}
+
+export type Travelogue = {
+  readonly journeyId: string
+  readonly text: string
+  readonly timeline: readonly {
+    place: string; dwellSec: number; questionCount: number
+    interestSignal: string | null; topics: readonly string[]
+  }[]
+  readonly facts: readonly { anchorId: string; name: string; text: string; source: string }[]
+  readonly pendingPreferences: readonly {
+    dimension: string; value: string; reason: string
+  }[]
+  readonly draftAnchorsExcluded: number
+}
+
 export type StreamHandlers = {
   onEvent(event: WireEvent): void
   onError?(message: string): void
@@ -112,7 +184,7 @@ export const createClient = (options: ClientOptions) => {
   }
 
   const once = <T>(
-    path: string, method: 'GET' | 'POST' | 'DELETE', data: unknown, token: string | null,
+    path: string, method: HttpMethod, data: unknown, token: string | null,
   ): Promise<T> =>
     new Promise((resolve, reject) => {
       request({
@@ -131,7 +203,7 @@ export const createClient = (options: ClientOptions) => {
     })
 
   const call = async <T>(
-    path: string, method: 'GET' | 'POST' | 'DELETE', data?: unknown,
+    path: string, method: HttpMethod, data?: unknown,
   ): Promise<T> => {
     const token = options.getToken?.() ?? null
     try {
@@ -157,6 +229,62 @@ export const createClient = (options: ClientOptions) => {
 
     logout(): Promise<unknown> {
       return call('/v1/auth/logout', 'POST')
+    },
+
+    // ───────────────────────── 建档（PRD U02）─────────────────────────
+
+    getProfile(): Promise<Profile> {
+      return call<Profile>('/me/profile', 'GET')
+    },
+
+    /** 用 PUT 而不是 PATCH：小程序发不出 PATCH，服务端两个都接 */
+    updateProfile(patch: ProfilePatch): Promise<Profile> {
+      return call<Profile>('/me/profile', 'PUT', patch)
+    },
+
+    // ───────────────────────── 首页 ─────────────────────────
+
+    listJourneys(): Promise<{ journeys: readonly JourneySummary[] }> {
+      return call('/me/journeys', 'GET')
+    },
+
+    // ───────────────────────── 我的记忆（规格 01 §7）─────────────────────────
+
+    getMemory(): Promise<MemoryView> {
+      return call<MemoryView>('/me/memory', 'GET')
+    },
+
+    memoryWhy(id: string): Promise<MemoryWhy> {
+      return call<MemoryWhy>(`/me/memory/${id}/why`, 'GET')
+    },
+
+    updateMemory(id: string, patch: { value?: string; strength?: number }): Promise<unknown> {
+      return call(`/me/memory/${id}`, 'PUT', patch)
+    },
+
+    deleteMemory(id: string): Promise<unknown> {
+      return call(`/me/memory/${id}`, 'DELETE')
+    },
+
+    exportMemory(): Promise<unknown> {
+      return call('/me/memory/export', 'POST')
+    },
+
+    /** 确认标记走查询串：DELETE 带 body 在 wx.request 里行为未定义 */
+    clearAllMemory(): Promise<unknown> {
+      return call('/me/memory/all?confirm=true', 'DELETE')
+    },
+
+    // ───────────────────────── 行后游记（规格 04 §7.1）─────────────────────────
+
+    getTravelogue(journeyId: string): Promise<Travelogue> {
+      return call<Travelogue>(`/v1/journeys/${journeyId}/travelogue`, 'GET')
+    },
+
+    confirmPreference(input: {
+      journeyId: string; dimension: string; value: string
+    }): Promise<{ confirmed: boolean }> {
+      return call('/me/memory/confirm', 'POST', input)
     },
 
     /**

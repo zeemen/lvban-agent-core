@@ -57,6 +57,18 @@ export const currentUser = (request: FastifyRequest): string | null => {
   return null
 }
 
+/**
+ * 要求必须已登录。/me/* 这类「我的」接口用它：
+ * 不知道你是谁就无从谈起「我的记忆」，匿名在这里没有合理语义。
+ */
+export const requireLogin = (request: FastifyRequest): string => {
+  const session = currentUser(request)
+  if (session === null) {
+    throw new AuthError(401, '需要登录：请先调用 /v1/auth/wx-login')
+  }
+  return session
+}
+
 /** 要求必须是本人。claimed 为空时直接用会话身份 */
 export const requireSelf = (request: FastifyRequest, claimed: string | null): string => {
   const session = currentUser(request)

@@ -1,0 +1,73 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="empty">正在读…</view>
+
+  <block wx:else>
+    <view class="hint intro">
+      这里是它记住的全部。每一条都能问「为什么」，也都能改、能删。
+    </view>
+
+    <!-- L3 身份 -->
+    <view class="card">
+      <view class="label">它觉得你是个什么样的人<text class="sub">身份层</text></view>
+      <view wx:if="{{identity.length === 0}}" class="empty small">
+        还没有。要在好几次旅程里都看到同一个倾向，才会升到这一层。
+      </view>
+      <view wx:for="{{identity}}" wx:key="trait" class="row">
+        <view class="row-main">
+          <view class="row-value">{{item.trait}}</view>
+          <view class="sub">{{item.explanation}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- L2 偏好 -->
+    <view class="card">
+      <view class="label">它记下的偏好<text class="sub">偏好层</text></view>
+      <view wx:if="{{preferences.length === 0}}" class="empty small">还没有记下任何偏好。</view>
+      <view wx:for="{{preferences}}" wx:key="id" class="row">
+        <view class="row-main">
+          <view class="row-value">{{item.value}}</view>
+          <view class="sub">{{item.dimensionLabel}} · 强度 {{item.strengthPercent}}% · {{item.journeyCount}} 次旅程</view>
+        </view>
+        <view class="row-acts">
+          <text class="act" data-id="{{item.id}}" bindtap="onWhy">为什么</text>
+          <text class="act" data-id="{{item.id}}" data-value="{{item.value}}" bindtap="onEdit">改</text>
+          <text class="act del" data-id="{{item.id}}" data-label="{{item.value}}" bindtap="onDelete">删</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- L1 足迹 -->
+    <view class="card">
+      <view class="label">去过的地方<text class="sub">旅程层</text></view>
+      <view wx:if="{{footprints.length === 0}}" class="empty small">还没有足迹。</view>
+      <view wx:for="{{footprints}}" wx:key="id" class="row">
+        <view class="row-main">
+          <view class="row-value">{{item.place}}</view>
+          <view class="sub">{{item.occurredOn}} · 停留约 {{item.minutes}} 分钟 · 问了 {{item.questionCount}} 次</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{error}}" class="error">{{error}}</view>
+
+    <view class="footer">
+      <button class="ghost" bindtap="onExport" disabled="{{busy}}">导出全部</button>
+      <button class="danger" bindtap="onClearAll" disabled="{{busy}}">清空全部</button>
+    </view>
+  </block>
+
+  <!-- 为什么 -->
+  <view wx:if="{{why}}" class="mask" bindtap="onCloseWhy">
+    <view class="sheet" catchtap="noop">
+      <view class="title">为什么记住「{{why.label}}」</view>
+      <view class="hint">{{why.promotion}}</view>
+      <view class="label">依据</view>
+      <view wx:for="{{why.evidence}}" wx:key="index" class="evidence">
+        <view wx:if="{{item.quote}}" class="quote">「{{item.quote}}」</view>
+        <view class="sub">旅程 {{item.journeyId}}</view>
+      </view>
+      <button class="ghost" bindtap="onCloseWhy">知道了</button>
+    </view>
+  </view>
+</view>

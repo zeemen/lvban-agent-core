@@ -1,0 +1,20 @@
+/* 首页私有样式。通用版式见 app.wxss */
+.hero { padding: 40rpx 8rpx 32rpx; }
+.hero-title { font-size: 44rpx; font-weight: 600; letter-spacing: 1rpx; }
+.hero-sub { font-size: 26rpx; color: #7a6f60; margin-top: 12rpx; }
+
+.resume { border-color: #2b2622; }
+.resume .primary { margin-top: 20rpx; }
+
+.scene-name { font-size: 34rpx; font-weight: 600; }
+.scene-desc { font-size: 26rpx; color: #7a6f60; margin-top: 10rpx; }
+.scene.soon { opacity: 0.55; }
+
+.entries { background: #fffdf8; border: 1rpx solid #e3dbcb; border-radius: 16rpx; margin-bottom: 20rpx; }
+.entry { padding: 28rpx; border-bottom: 1rpx solid #efe8da; }
+.entry:last-child { border-bottom: none; }
+.entry-name { font-size: 30rpx; font-weight: 600; }
+.entry-desc { font-size: 24rpx; color: #9a8f80; margin-top: 8rpx; }
+
+.past { padding: 24rpx 28rpx; }
+.past-row { display: flex; justify-content: space-between; font-size: 28rpx; }

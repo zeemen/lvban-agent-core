@@ -121,6 +121,7 @@ export const PROVIDERS: Readonly<Record<string, ProviderProfile>> = {
       qa: 'qwen-plus',
       planner: 'qwen-max',
       copy: 'qwen-plus',
+      travelogue: 'qwen-plus',
       vision: 'qwen-vl-max',
       embedding: 'text-embedding-v3',
     },
@@ -191,6 +192,7 @@ export const PROVIDERS: Readonly<Record<string, ProviderProfile>> = {
       qa: 'deepseek-flash',
       planner: 'deepseek-v4-pro',
       copy: 'deepseek-flash',
+      travelogue: 'deepseek-flash',
       // 视觉必须显式用 flash：v4-pro 不吃图片
       vision: 'deepseek-flash',
     },
@@ -320,6 +322,9 @@ const THINKING_BY_TASK: Partial<Record<ModelTask, boolean>> = {
   intent: false,
   qa: false,
   copy: false,
+  // 游记也关：它不缺思考时间，缺的是 max_tokens。推理 token 和正文共用额度，
+  // 开了思考几百字的正文会被挤掉（这正是之前 deepseek-flash 返回空串的成因）
+  travelogue: false,
   planner: true,
   vision: false,
 }

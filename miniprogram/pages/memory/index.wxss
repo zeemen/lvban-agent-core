@@ -1,0 +1,21 @@
+/* 我的记忆页私有样式。通用版式见 app.wxss */
+.intro { padding: 24rpx 8rpx 8rpx; margin-bottom: 0; }
+.empty.small { padding: 24rpx 0; text-align: left; font-size: 25rpx; }
+
+.row { display: flex; align-items: flex-start; gap: 16rpx; padding: 18rpx 0; border-bottom: 1rpx solid #efe8da; }
+.row:last-child { border-bottom: none; }
+.row-main { flex: 1; }
+.row-value { font-size: 29rpx; font-weight: 600; }
+.row-acts { display: flex; gap: 20rpx; padding-top: 4rpx; }
+.act { font-size: 25rpx; color: #6b6153; }
+.act.del { color: #b4472a; }
+
+.footer { display: flex; gap: 16rpx; margin-top: 8rpx; }
+.footer .ghost, .footer .danger { flex: 1; }
+
+.mask { position: fixed; inset: 0; background: rgba(43, 38, 34, 0.5); display: flex; align-items: flex-end; }
+.sheet { width: 100%; background: #fffdf8; border-radius: 24rpx 24rpx 0 0; padding: 36rpx 32rpx 48rpx; box-sizing: border-box; max-height: 76vh; overflow-y: auto; }
+.evidence { padding: 14rpx 0; border-bottom: 1rpx solid #efe8da; }
+.evidence:last-of-type { border-bottom: none; }
+.quote { font-size: 28rpx; line-height: 1.7; }
+.sheet .ghost { margin-top: 24rpx; width: 100%; }

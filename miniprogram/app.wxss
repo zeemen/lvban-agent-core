@@ -1,5 +1,30 @@
+/**
+ * 全局基础样式。页面共用的版式放这里，页面私有的放各自的 wxss ——
+ * 五个页面各抄一份卡片样式的话，改一次要改五处。
+ */
+
 page {
   background: #f3efe7;
   color: #2b2622;
   font-family: -apple-system, "PingFang SC", sans-serif;
 }
+
+.page { display: flex; flex-direction: column; min-height: 100vh; padding: 24rpx; box-sizing: border-box; }
+
+.card { background: #fffdf8; border: 1rpx solid #e3dbcb; border-radius: 16rpx; padding: 28rpx; margin-bottom: 20rpx; }
+.title { font-size: 36rpx; font-weight: 600; margin-bottom: 12rpx; }
+.hint { font-size: 26rpx; color: #7a6f60; line-height: 1.6; margin-bottom: 24rpx; }
+.label { font-size: 28rpx; font-weight: 600; margin-bottom: 12rpx; }
+.sub { font-size: 24rpx; color: #9a8f80; font-weight: 400; margin-left: 8rpx; }
+.radio { display: block; font-size: 28rpx; padding: 14rpx 0; }
+
+/* 按钮。::after 清掉的是小程序 button 默认的 1px 边框 */
+.primary { background: #2b2622; color: #f3efe7; font-size: 30rpx; border-radius: 12rpx; }
+.primary::after { border: none; }
+.ghost, .danger { font-size: 28rpx; background: transparent; border: 1rpx solid #d8cfbd; color: #6b6153; margin: 0; }
+.danger { color: #b4472a; border-color: #e0bdb2; }
+.ghost::after, .danger::after { border: none; }
+
+.empty { text-align: center; font-size: 26rpx; color: #9a8f80; padding: 60rpx 20rpx; line-height: 1.8; }
+.error { font-size: 26rpx; color: #b4472a; padding: 16rpx 0; line-height: 1.6; }
+.disclaimer { text-align: center; font-size: 22rpx; color: #a99e8e; padding: 24rpx 0 8rpx; }

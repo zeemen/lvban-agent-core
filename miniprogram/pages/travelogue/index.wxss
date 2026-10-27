@@ -1,0 +1,22 @@
+/* 游记页私有样式。通用版式见 app.wxss */
+.pick { padding: 26rpx 28rpx; }
+.pick-row { display: flex; justify-content: space-between; align-items: baseline; }
+.pick-name { font-size: 30rpx; font-weight: 600; }
+.pick-state { font-size: 24rpx; color: #9a8f80; margin-top: 8rpx; }
+
+.article { padding: 36rpx 32rpx; }
+.article-text { font-size: 30rpx; line-height: 1.9; white-space: pre-wrap; }
+
+.fp-row { display: flex; justify-content: space-between; align-items: baseline; padding: 12rpx 0; }
+.fp-place { font-size: 28rpx; }
+
+.fact { padding: 14rpx 0; border-bottom: 1rpx solid #efe8da; }
+.fact:last-child { border-bottom: none; }
+.fact-text { font-size: 27rpx; line-height: 1.7; }
+
+.note-card { background: #f6efdf; border-color: #e0d2ae; font-size: 25rpx; color: #6b5c3c; line-height: 1.7; }
+
+.pending { display: flex; align-items: center; gap: 16rpx; padding: 16rpx 0; }
+.pending-main { flex: 1; }
+.pending-value { font-size: 29rpx; font-weight: 600; }
+.confirm { width: 160rpx; font-size: 26rpx; margin: 0; }

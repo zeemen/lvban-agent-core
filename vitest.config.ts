@@ -14,6 +14,11 @@ export default defineConfig({
       // 需要验证「缺 Key」行为的用例自己用 vi.stubEnv 显式清。
       MODEL_PROVIDER: 'mock',
       MODEL_PROVIDER_VISION: '',
+      // TTS 同理：测试不该因为 .env 改了供应商就去打收费接口
+      TTS_PROVIDER: 'mock',
+      TTS_VOICE_PEER: '',
+      TTS_VOICE_CHILD: '',
+      TTS_VOICE_LIGHT: '',
       MODEL_ID_INTENT: '',
       MODEL_ID_QA: '',
       MODEL_ID_PLANNER: '',

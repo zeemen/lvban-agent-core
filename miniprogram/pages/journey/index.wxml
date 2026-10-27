@@ -1,0 +1,62 @@
+<view class="page">
+
+  <!-- 授权：规格 01 §2.3，定位与轨迹保存分别说明、分别选择 -->
+  <view wx:if="{{!consentGiven}}" class="card consent">
+    <view class="title">开始今天的旅程</view>
+    <view class="hint">
+      只有现在开始之后才会采集位置。行程结束时可以看到记了什么，并一键删除。
+    </view>
+
+    <view class="label">轨迹保存</view>
+    <radio-group bindchange="onConsentChange">
+      <label class="radio"><radio value="none" checked="{{trackConsent === 'none'}}" />本次不保存轨迹</label>
+      <label class="radio"><radio value="visited_points_only" checked="{{trackConsent === 'visited_points_only'}}" />仅保存访问点位</label>
+      <label class="radio"><radio value="full_track" checked="{{trackConsent === 'full_track'}}" />保存完整轨迹</label>
+    </radio-group>
+
+    <button class="primary" bindtap="onStart" disabled="{{busy}}">开始今天的旅程</button>
+  </view>
+
+  <!-- 行中 -->
+  <block wx:else>
+    <view class="card pois">
+      <view class="label">走到哪儿了<text class="sub">（开发者工具没有真实 GPS，点一下模拟走到）</text></view>
+      <view class="poi-row">
+        <button
+          wx:for="{{pois}}" wx:key="id"
+          class="poi {{currentPoi === item.id ? 'active' : ''}}"
+          data-id="{{item.id}}" bindtap="onArrive" disabled="{{busy}}"
+        >{{item.name}}</button>
+      </view>
+    </view>
+
+    <scroll-view class="dialog" scroll-y scroll-into-view="tail">
+      <view wx:for="{{lines}}" wx:key="index" class="line {{item.kind}}">
+        <view class="bubble">{{item.text}}</view>
+        <view wx:if="{{item.note}}" class="note">{{item.note}}</view>
+      </view>
+      <view id="tail"></view>
+    </scroll-view>
+
+    <view wx:if="{{timing}}" class="timing">
+      <text>{{timing}}</text>
+      <text class="sub">TTS：{{ttsProvider}}</text>
+    </view>
+
+    <view class="composer">
+      <input
+        class="input" value="{{input}}" bindinput="onInput"
+        placeholder="{{currentPoiName ? '在' + currentPoiName + '问一句' : '问一句'}}"
+        confirm-type="send" bindconfirm="onAsk"
+      />
+      <button class="send" bindtap="onAsk" disabled="{{busy || !input}}">问</button>
+    </view>
+
+    <view class="footer">
+      <button class="ghost" bindtap="onEnd">结束旅程</button>
+      <button class="danger" bindtap="onDelete">删除本次记录</button>
+    </view>
+  </block>
+
+  <view class="disclaimer">AI 生成内容仅供参考 · AI 服务，非持证导游</view>
+</view>

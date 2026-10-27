@@ -1,0 +1,17 @@
+{
+  "pages": ["pages/journey/index"],
+  "window": {
+    "navigationBarTitleText": "旅伴",
+    "navigationBarBackgroundColor": "#2b2622",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f3efe7"
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于判断你走到了哪个点位，只在你点「开始今天的旅程」之后采集"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation", "onLocationChange", "startLocationUpdate"],
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

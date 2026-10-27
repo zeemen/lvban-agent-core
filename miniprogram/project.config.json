@@ -1,0 +1,16 @@
+{
+  "description": "旅伴 Agent · 微信小程序（M3）",
+  "appid": "touristappid",
+  "projectname": "lvban",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "libVersion": "2.20.2",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "useCompilerPlugins": ["typescript"],
+    "minified": false,
+    "postcss": true
+  }
+}

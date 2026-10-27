@@ -20,23 +20,24 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p miniprogram/tsconfig.json",
     "lint:content": "tsx src/content/lint.ts",
     "models:probe": "tsx src/models/probe.ts",
     "tts:presynth": "tsx src/tts/presynth.ts"
   },
   "dependencies": {
+    "dotenv": "16.4.7",
     "fastify": "5.2.1",
-    "pg": "8.13.1",
     "ioredis": "5.4.2",
-    "zod": "3.24.1",
+    "pg": "8.13.1",
     "uuidv7": "1.0.2",
-    "dotenv": "16.4.7"
+    "zod": "3.24.1"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
     "@types/pg": "8.11.10",
     "@vitest/coverage-v8": "2.1.8",
+    "miniprogram-api-typings": "4.0.5",
     "tsx": "4.19.2",
     "typescript": "5.7.2",
     "vitest": "2.1.8"

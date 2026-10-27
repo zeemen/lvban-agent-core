@@ -12,6 +12,7 @@ import { createSentenceSplitter } from '../planner/sentence.js'
 import { ttsAvailability } from '../tts/availability.js'
 import { pickTtsAdapter, synthesize, ttsProvider } from '../tts/router.js'
 import { resolveVoice } from '../tts/voices.js'
+import type { WireEvent } from '../../miniprogram/shared/stream-events.js'
 import { buildAnswerSystemPrompt } from './prompt.js'
 
 /**
@@ -277,3 +278,14 @@ export async function* streamQuestion(
     },
   }
 }
+
+/**
+ * 编译期防漂移：服务端发出的事件必须仍然满足小程序侧的线上契约。
+ * 改了 StreamedEvent 而忘了同步契约，这里会编译失败——
+ * 跨网络的契约漂移在运行时只表现为「有时候没声音」，极难查。
+ */
+// 用元组包裹抑制分发：裸的 `A | B extends C` 会逐成员分发，
+// 只要有一个成员满足结果就含 true，断言会形同虚设
+type _WireContractHolds = [StreamedEvent] extends [WireEvent] ? true : never
+const _wireContractHolds: _WireContractHolds = true
+void _wireContractHolds

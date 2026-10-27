@@ -236,6 +236,68 @@ presynth 会全部跳过，线上播的是假音频且不报错。`audio-cache/m
 
 TTS 未配置时降级为只显示文字，不发 `audio` 事件、不报错，与视觉链路同一思路。
 
+## 小程序（M3）
+
+```
+miniprogram/
+  shared/stream-events.ts   SSE 线上契约，服务端反向引用它做编译期防漂移
+  utils/utf8.ts             增量 UTF-8 解码
+  utils/sse.ts              SSE 帧解析
+  utils/api.ts              类型化 API 客户端（request 可注入）
+  utils/audio.ts            顺序音频队列
+  pages/journey/            行中页：授权 → 开始 → 到达 → 问一句 → 结束
+```
+
+**框架选了原生小程序 + TypeScript**，不是 Taro / uni-app。决定性理由是风险位置：
+`onChunkReceived` 是 `RequestTask` 上的方法，封装层未必稳定暴露它，而这个产品的
+核心交互全压在原生能力上（定位围栏、相机、录音、后台音频、流式）。
+
+### 流式：小程序没有 EventSource
+
+唯一可行路径是 `wx.request({ enableChunked: true })` 配
+`RequestTask.onChunkReceived`（基础库 **2.20.2+**），拿到的是 **ArrayBuffer 分片**。
+服务端的 SSE 格式不用改，解析全在客户端，分四层，每层都要能处理跨分片切断：
+
+```
+ArrayBuffer 分片 → 增量 UTF-8 解码 → SSE 帧解析 → 类型化事件
+```
+
+**第一层是必然踩的坑**：中文一个字 3 字节，分片切在字正中间是常态不是边缘情况；
+而小程序运行时不是浏览器，没有全局 `TextDecoder`。所以 `utf8.ts` 自己实现了
+增量解码：每次只解码「完整字符」的部分，残缺尾巴留到下一片拼上。
+测试覆盖了 1/2/3/5/17/64 字节等各种分片大小，以及故意切在字中间的情形。
+
+基础库低于 2.20.2 时拿不到 `onChunkReceived`，客户端会明确报错而不是静默无声。
+
+### 防契约漂移
+
+`miniprogram/shared/stream-events.ts` 是服务端与小程序共用的线上契约，
+服务端有一条编译期断言保证它发出的事件仍满足契约：
+
+```ts
+type _WireContractHolds = [StreamedEvent] extends [WireEvent] ? true : never
+```
+
+用元组包裹是必要的——裸的 `A | B extends C` 会逐成员分发，只要有一个成员满足
+结果就含 `true`，断言会形同虚设。跨网络的契约漂移在运行时只表现为
+「有时候没声音」，极难查，所以这条断言值得写对。
+
+契约文件放在 `miniprogram/` 下而不是仓库根：微信开发者工具只打包
+`miniprogramRoot` 以内的文件，小程序这边有硬约束，服务端没有。
+
+### 本地联调
+
+```bash
+node --run start          # 服务端 :8787
+```
+
+开发者工具导入 `miniprogram/` 目录，在「详情 → 本地设置」勾选
+**不校验合法域名**，否则 `http://localhost` 会被拦。上线前 `config.ts` 的
+`baseUrl` 必须换成已在小程序后台配置的 HTTPS request 合法域名。
+
+开发者工具里没有真实 GPS，行中页用按钮模拟「走到这里」——但走的仍是服务端
+真实的围栏判定（两次定位上报 + 去抖 + 最小停留），不绕过。
+
 ## 还没做
 
 - **TTS 真实音色实测**：链路已通（见下节），但还没用真实 Key 跑过——
@@ -243,7 +305,12 @@ TTS 未配置时降级为只显示文字，不发 `audio` 事件、不报错，�
 - **ASR**：语音输入尚未接入。
 - **锚点内容**：只录了 2 个样例锚点（江南贡院号舍、错金银重络铜壶），且审校状态为 `draft`。南博 18 件 / 夫子庙 12 处的最终名单待内容负责人核定，选点标准见规格 04 §4.3。
 - **围栏坐标**：`content/geofences/fuzimiao.json` 里是占位值，`calibrated: false`。必须按规格 02 §9.3 现场实测后替换。
-- **小程序前端**：M3。
+- **微信登录**：M3 用的是服务端 `/v1/dev/users` 建的测试用户。
+  真实登录要 `wx.login` → `code2session`，需要后端持有 appsecret。
+- **真机实测**：目前只在 Node 里用真实 HTTP 分片验证过解析链路，
+  还没在开发者工具和真机上跑过——`onChunkReceived` 的真机表现、
+  音频队列的后台播放、定位权限弹窗都待实测。
+- **其余页面**：首页、行前建档、行后游记、我的记忆。
 - **兑换码、大使后台、运营后台**：按规格 04 排期。
 
 ## 环境

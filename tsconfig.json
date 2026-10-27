@@ -16,5 +16,11 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs"]
+  "include": [
+    "src/**/*.ts",
+    "miniprogram/utils/**/*.ts",
+    "miniprogram/shared/**/*.ts",
+    "tests/**/*.ts",
+    "scripts/**/*.mjs"
+  ]
 }

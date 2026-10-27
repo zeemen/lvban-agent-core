@@ -13,3 +13,6 @@ graft/
 
 # 预合成音频：按内容寻址可随时重建，不入库
 audio-cache/
+
+# 微信开发者工具的每开发者私有配置，由工具自动生成
+miniprogram/project.private.config.json

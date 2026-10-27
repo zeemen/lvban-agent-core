@@ -288,8 +288,14 @@ type _WireContractHolds = [StreamedEvent] extends [WireEvent] ? true : never
 ### 本地联调
 
 ```bash
-node --run start          # 服务端 :8787
+node --run start          # 服务端 :8791
 ```
+
+端口用 8791 而不是常见的 8787：本机常有别的服务占着 127.0.0.1:8787。
+两个进程能同时绑同一端口号（一个 `*:8787`、一个 `127.0.0.1:8787`），
+而 `localhost` 命中更具体的那个——表现是请求被不相干的服务接走，
+返回它自己的错误码，看起来却像我们的接口坏了。换端口前先
+`lsof -nP -iTCP:<port> -sTCP:LISTEN` 确认干净。
 
 开发者工具导入 `miniprogram/` 目录，在「详情 → 本地设置」勾选
 **不校验合法域名**，否则 `http://localhost` 会被拦。上线前 `config.ts` 的

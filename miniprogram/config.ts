@@ -1,12 +1,17 @@
 /**
  * 小程序端配置。
  *
+ * 端口刻意避开 8787：本机另有一个长期运行的服务绑在 127.0.0.1:8787。
+ * 两个进程可以同时绑同一端口号（一个 *:8787、一个 127.0.0.1:8787），
+ * 而 localhost 命中更具体的那个 —— 表现为请求被不相干的服务接走、返回 401，
+ * 看起来却像是我们的接口出错。
+ *
  * 本地联调：开发者工具「详情 → 本地设置」勾选「不校验合法域名」，
  * 否则 http://localhost 会被拦。上线前 baseUrl 必须换成已在
  * 小程序后台配置过的 HTTPS request 合法域名。
  */
 export const config = {
-  baseUrl: 'http://localhost:8787',
+  baseUrl: 'http://localhost:8791',
   /** M3 阶段没有微信登录，用服务端 /v1/dev/users 建的测试用户 */
   devOpenId: 'miniprogram_dev_user',
   sceneId: 'fuzimiao',

@@ -24,6 +24,34 @@
       <view class="article-text">{{travelogue.text}}</view>
     </view>
 
+    <!-- 规格 01 §7.2：回顾页必须交代本次记了什么，并给出一键删除 -->
+    <view class="card record">
+      <view class="label">这次记了什么</view>
+      <view class="record-row">
+        <text>走过的点位</text><text class="num">{{travelogue.record.pointCount}}</text>
+      </view>
+      <view class="record-row">
+        <text>问了几句</text><text class="num">{{travelogue.record.questionCount}}</text>
+      </view>
+      <view class="record-row">
+        <text>轨迹</text><text class="num">{{consentLabel}}</text>
+      </view>
+
+      <block wx:if="{{newPreferences.length > 0}}">
+        <view class="label sep">这次新记住的</view>
+        <view wx:for="{{newPreferences}}" wx:key="id" class="np">
+          <text class="np-value {{item.removed ? 'gone' : ''}}">{{item.value}}</text>
+          <text
+            wx:if="{{!item.removed}}" class="np-act"
+            data-id="{{item.id}}" data-index="{{index}}" bindtap="onReject"
+          >这不对</text>
+          <text wx:else class="np-done">已撤销</text>
+        </view>
+      </block>
+
+      <button class="danger wide" bindtap="onDeleteJourney">删除本次全部记录</button>
+    </view>
+
     <view wx:if="{{minutesByPlace.length > 0}}" class="card">
       <view class="label">走过的地方</view>
       <view wx:for="{{minutesByPlace}}" wx:key="place" class="fp-row">

@@ -20,6 +20,8 @@ const material = (patch: Partial<TravelogueMaterial> = {}): TravelogueMaterial =
   facts: [{ anchorId: 'a1', name: '江南贡院号舍', text: '号舍宽约一米', source: '南京中国科举博物馆' }],
   pendingPreferences: [],
   draftAnchorsExcluded: 0,
+  record: { pointCount: 1, questionCount: 3, trackConsent: 'visited_points_only' },
+  newPreferences: [],
   ...patch,
 })
 

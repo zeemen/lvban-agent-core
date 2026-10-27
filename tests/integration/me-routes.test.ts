@@ -323,3 +323,81 @@ describe('确认推断出来的偏好', () => {
     expect(res.statusCode).toBe(403)
   })
 })
+
+describe('回顾页必须交代本次记了什么（规格 01 §7.2）', () => {
+  test('返回点位数、提问数与轨迹档位', async () => {
+    const { userId, auth } = await loggedIn()
+    const journeyId = await startJourney(userId, auth)
+    await pool.query(
+      `INSERT INTO interaction
+         (id, journey_id, user_id, turn_index, role, channel, content, occurred_at)
+       VALUES ($1,$2,$3,0,'user','text','号舍真小',now())`,
+      [uuidv7(), journeyId, userId],
+    )
+
+    const res = await app.inject({
+      method: 'GET', url: `/v1/journeys/${journeyId}/travelogue`, headers: auth,
+    })
+
+    const body = json<{
+      record: { pointCount: number; questionCount: number; trackConsent: string }
+    }>(res.payload)
+    expect(body.record.questionCount).toBe(1)
+    expect(body.record.trackConsent).toBe('visited_points_only')
+    expect(typeof body.record.pointCount).toBe('number')
+  })
+
+  test('列出本次新记住的偏好，用户可以当场说「这不对」', async () => {
+    const { userId, auth } = await loggedIn()
+    const journeyId = await startJourney(userId, auth)
+    await repo.upsertPreference({
+      userId, dimension: 'topic_interest', value: '科举', strength: 0.6,
+      status: 'active', source: 'explicit',
+      evidence: [{ journeyId, party: 'solo', signalCount: 2, at: new Date().toISOString() }],
+      journeyCount: 1, seenAt: new Date(),
+    })
+
+    const res = await app.inject({
+      method: 'GET', url: `/v1/journeys/${journeyId}/travelogue`, headers: auth,
+    })
+
+    const body = json<{ newPreferences: { id: string; value: string }[] }>(res.payload)
+    expect(body.newPreferences.map((p) => p.value)).toEqual(['科举'])
+    expect(body.newPreferences[0]?.id).toBeTruthy()
+  })
+
+  test('别的旅程记下的偏好不算在这一次里', async () => {
+    const { userId, auth } = await loggedIn()
+    const mine = await startJourney(userId, auth)
+    await repo.upsertPreference({
+      userId, dimension: 'topic_interest', value: '别次的', strength: 0.6,
+      status: 'active', source: 'explicit',
+      evidence: [{ journeyId: uuidv7(), party: 'solo', signalCount: 2, at: '2026-01-01' }],
+      journeyCount: 1, seenAt: new Date(),
+    })
+
+    const res = await app.inject({
+      method: 'GET', url: `/v1/journeys/${mine}/travelogue`, headers: auth,
+    })
+
+    expect(json<{ newPreferences: unknown[] }>(res.payload).newPreferences).toHaveLength(0)
+  })
+
+  test('已被标记「这不对」的不再列出', async () => {
+    const { userId, auth } = await loggedIn()
+    const journeyId = await startJourney(userId, auth)
+    const id = await repo.upsertPreference({
+      userId, dimension: 'topic_interest', value: '科举', strength: 0.6,
+      status: 'active', source: 'explicit',
+      evidence: [{ journeyId, party: 'solo', signalCount: 2, at: new Date().toISOString() }],
+      journeyCount: 1, seenAt: new Date(),
+    })
+    await app.inject({ method: 'DELETE', url: `/me/memory/${id}`, headers: auth })
+
+    const res = await app.inject({
+      method: 'GET', url: `/v1/journeys/${journeyId}/travelogue`, headers: auth,
+    })
+
+    expect(json<{ newPreferences: unknown[] }>(res.payload).newPreferences).toHaveLength(0)
+  })
+})

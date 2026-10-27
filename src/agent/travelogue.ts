@@ -39,6 +39,24 @@ export type PendingPreference = {
   readonly reason: string
 }
 
+/**
+ * 规格 01 §7.2：旅程结束的回顾页必须交代本次记了什么，
+ * 并提供一键删除——这个入口「不允许折叠在二级菜单里」。
+ */
+export type JourneyRecord = {
+  readonly pointCount: number
+  readonly questionCount: number
+  readonly trackConsent: string
+}
+
+/** 这次新记住的偏好。列出来是为了让用户当场能说「这不对」 */
+export type NewPreference = {
+  readonly id: string
+  readonly dimension: string
+  readonly value: string
+  readonly status: string
+}
+
 export type TravelogueMaterial = {
   readonly journeyId: string
   readonly sceneId: string
@@ -50,6 +68,8 @@ export type TravelogueMaterial = {
   readonly pendingPreferences: readonly PendingPreference[]
   /** 因为审校状态不是 approved 而被排除的锚点数——内容没过审时要能解释史实为何为空 */
   readonly draftAnchorsExcluded: number
+  readonly record: JourneyRecord
+  readonly newPreferences: readonly NewPreference[]
 }
 
 /**
@@ -131,6 +151,26 @@ export const collectMaterial = async (
     facts.push(...factsFromAnchor(anchor, journey.mode))
   }
 
+  const { rows: counts } = await pool.query<{ points: string; questions: string }>(
+    `SELECT
+       (SELECT COUNT(DISTINCT COALESCE(poi_id, exhibit_id))::text
+          FROM location_event WHERE journey_id = $1
+           AND COALESCE(poi_id, exhibit_id) IS NOT NULL) AS points,
+       (SELECT COUNT(*)::text FROM interaction
+         WHERE journey_id = $1 AND role = 'user') AS questions`,
+    [journeyId],
+  )
+
+  // 本次新记住的偏好：证据链里含这个 journeyId 的那些。
+  // 用 jsonb 包含判断，证据条目形如 {journeyId, party, signalCount, at}
+  const { rows: newPrefs } = await pool.query<NewPreference>(
+    `SELECT id, dimension, value, status FROM preference
+      WHERE user_id = $1 AND status <> 'user_removed'
+        AND evidence_refs @> jsonb_build_array(jsonb_build_object('journeyId', $2::text))
+      ORDER BY value`,
+    [journey.user_id, journeyId],
+  )
+
   const signals = await readInferredSignals(journeyId)
   const seen = new Set<string>()
   const pendingPreferences: PendingPreference[] = []
@@ -157,6 +197,12 @@ export const collectMaterial = async (
     facts,
     pendingPreferences,
     draftAnchorsExcluded: excluded,
+    record: {
+      pointCount: Number(counts[0]?.points ?? 0),
+      questionCount: Number(counts[0]?.questions ?? 0),
+      trackConsent: journey.track_consent,
+    },
+    newPreferences: newPrefs,
   }
 }
 
@@ -223,6 +269,8 @@ export type Travelogue = {
   readonly facts: readonly Fact[]
   readonly pendingPreferences: readonly PendingPreference[]
   readonly draftAnchorsExcluded: number
+  readonly record: JourneyRecord
+  readonly newPreferences: readonly NewPreference[]
 }
 
 export const generateTravelogue = async (
@@ -245,5 +293,7 @@ export const generateTravelogue = async (
     facts: material.facts,
     pendingPreferences: material.pendingPreferences,
     draftAnchorsExcluded: material.draftAnchorsExcluded,
+    record: material.record,
+    newPreferences: material.newPreferences,
   }
 }

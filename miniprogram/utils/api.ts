@@ -149,6 +149,12 @@ export type Travelogue = {
     dimension: string; value: string; reason: string
   }[]
   readonly draftAnchorsExcluded: number
+  readonly record: {
+    pointCount: number; questionCount: number; trackConsent: string
+  }
+  readonly newPreferences: readonly {
+    id: string; dimension: string; value: string; status: string
+  }[]
 }
 
 export type StreamHandlers = {

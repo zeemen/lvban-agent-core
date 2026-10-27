@@ -20,3 +20,13 @@
 .pending-main { flex: 1; }
 .pending-value { font-size: 29rpx; font-weight: 600; }
 .confirm { width: 160rpx; font-size: 26rpx; margin: 0; }
+
+.record-row { display: flex; justify-content: space-between; align-items: baseline; padding: 12rpx 0; font-size: 28rpx; }
+.record-row .num { font-weight: 600; }
+.label.sep { margin-top: 24rpx; padding-top: 20rpx; border-top: 1rpx solid #efe8da; }
+.np { display: flex; justify-content: space-between; align-items: center; padding: 14rpx 0; }
+.np-value { font-size: 28rpx; }
+.np-value.gone { color: #a99e8e; text-decoration: line-through; }
+.np-act { font-size: 25rpx; color: #b4472a; }
+.np-done { font-size: 25rpx; color: #9a8f80; }
+.danger.wide { width: 100%; margin-top: 28rpx; }

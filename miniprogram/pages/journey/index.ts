@@ -234,8 +234,10 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
       this.appendLine({ kind: 'system', text: '旅程已结束，行后蒸馏已排队' })
       this.setData({ journeyId: null, consentGiven: false })
       // 规格 01 §7.2：结束之后必须直接看到「记了什么」与一键删除，
-      // 不能把回顾折叠进二级菜单
-      wx.navigateTo({ url: `/pages/travelogue/index?journeyId=${journeyId}` })
+      // 不能把回顾折叠进二级菜单。
+      // 用 redirectTo 而不是 navigateTo：旅程已经结束，留在返回栈里的是一个
+      // 被重置过的行中页，返回到它没有意义
+      wx.redirectTo({ url: `/pages/travelogue/index?journeyId=${journeyId}` })
     } catch (error) {
       this.appendLine({ kind: 'system', text: `结束失败：${(error as Error).message}` })
     }

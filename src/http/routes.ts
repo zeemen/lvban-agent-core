@@ -16,6 +16,10 @@ import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
 import { readLedger } from '../models/router.js'
 import { CACHE_DIR, readCached } from '../tts/cache.js'
+import { code2Session } from '../auth/wx.js'
+import { bearerToken, createSession, revokeSession } from '../auth/session.js'
+import { isAuthRequired, requireWxConfig } from '../auth/policy.js'
+import { currentUser, registerAuthHook, requireJourneyOwner, requireSelf } from './auth.js'
 import { classifyError } from './errors.js'
 import { checkDependencies } from './health.js'
 import { ttsAvailability } from '../tts/availability.js'
@@ -38,6 +42,8 @@ const fixSchema = z.object({
 })
 
 export const registerRoutes = (app: FastifyInstance): void => {
+  registerAuthHook(app)
+
   // 依赖探活要真打一下 PG 和 Redis：容器停了而进程还在，是联调时最容易看岔的一种故障
   app.get('/health', async (_request, reply) => {
     const health = await checkDependencies()
@@ -52,8 +58,46 @@ export const registerRoutes = (app: FastifyInstance): void => {
     return reply.code(status).send(body)
   })
 
-  // 开发辅助：建用户。生产由微信授权创建。
+  /**
+   * 微信登录（PRD U01）。只取 openid：不索取手机号，也不留存 session_key。
+   *
+   * code 一次性且约 5 分钟过期，所以小程序必须在用户真正触发登录时
+   * 才调 wx.login，不能在页面 onLoad 就先换好放着。
+   */
+  app.post('/v1/auth/wx-login', async (request, reply) => {
+    const { code } = z.object({ code: z.string().min(1) }).parse(request.body)
+    const session = await code2Session(code, requireWxConfig())
+
+    const { rows } = await pool.query<{ id: string; created: boolean }>(
+      `INSERT INTO app_user (id, wx_openid, wx_unionid)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (wx_openid) DO UPDATE
+         SET wx_unionid = COALESCE(EXCLUDED.wx_unionid, app_user.wx_unionid)
+       RETURNING id, (xmax = 0) AS created`,
+      [uuidv7(), session.openid, session.unionid ?? null],
+    )
+    const user = rows[0]
+    if (user === undefined) throw new Error('登录写账号失败')
+
+    const issued = await createSession(user.id)
+    return reply.code(200).send({
+      userId: user.id,
+      token: issued.token,
+      expiresIn: issued.expiresInSeconds,
+      isNew: user.created,
+    })
+  })
+
+  app.post('/v1/auth/logout', async (request) => {
+    await revokeSession(bearerToken(request.headers.authorization))
+    return { ok: true }
+  })
+
+  // 开发辅助：建用户。强制鉴权时必须下线——它是无需凭证凭空造身份的后门。
   app.post('/v1/dev/users', async (request, reply) => {
+    if (isAuthRequired()) {
+      return reply.code(404).send({ error: 'not_found' })
+    }
     const body = z.object({
       openid: z.string(),
       ageBand: z.string().default('19_24'),
@@ -66,12 +110,18 @@ export const registerRoutes = (app: FastifyInstance): void => {
        RETURNING id`,
       [uuidv7(), body.openid, body.nickname, body.ageBand],
     )
-    return reply.code(201).send({ userId: rows[0]?.id })
+    const userId = rows[0]?.id
+    if (userId === undefined) throw new Error('建测试用户失败')
+    // 一并发令牌：这样联调链路和线上链路走的是同一套鉴权，不会只在真机上才暴露问题
+    const issued = await createSession(userId)
+    return reply.code(201).send({ userId, token: issued.token })
   })
 
   app.post('/v1/journeys', async (request, reply) => {
     const body = startSchema.parse(request.body)
-    const journey = await startJourney(body)
+    // 身份以会话为准：请求体里的 userId 只在匿名联调时作数
+    const userId = requireSelf(request, body.userId)
+    const journey = await startJourney({ ...body, userId })
     return reply.code(201).send({
       journeyId: journey.id,
       state: journey.state,
@@ -81,6 +131,7 @@ export const registerRoutes = (app: FastifyInstance): void => {
 
   app.post('/v1/journeys/:id/end', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
     const journey = await endJourney(id)
     const report = await distillJourney(id)
     return { journeyId: journey.id, state: journey.state, distillation: report }
@@ -88,12 +139,14 @@ export const registerRoutes = (app: FastifyInstance): void => {
 
   app.delete('/v1/journeys/:id', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
     await purgeJourneyData(id)
     return { purged: true, journeyId: id }
   })
 
   app.post('/v1/journeys/:id/signals', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
     const body = z.object({ points: z.array(fixSchema).default([]) }).parse(request.body)
     return ingestFixes({
       journeyId: id,
@@ -103,12 +156,14 @@ export const registerRoutes = (app: FastifyInstance): void => {
 
   app.get('/v1/journeys/:id/context', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
     const query = z.object({ poiId: z.string().optional() }).parse(request.query)
     return buildContextState({ journeyId: id, poiId: query.poiId ?? null })
   })
 
   app.post('/v1/journeys/:id/arrive', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
     const body = z.object({
       poiId: z.string(),
       heardBefore: z.array(z.string()).optional(),
@@ -119,6 +174,7 @@ export const registerRoutes = (app: FastifyInstance): void => {
 
   app.post('/v1/journeys/:id/ask', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
     const body = z.object({ text: z.string().min(1), poiId: z.string().optional() })
       .parse(request.body)
     return onQuestion({ journeyId: id, ...body })
@@ -132,6 +188,7 @@ export const registerRoutes = (app: FastifyInstance): void => {
    */
   app.post('/v1/journeys/:id/ask/stream', async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await requireJourneyOwner(request, id)
     const body = z.object({
       text: z.string().min(1),
       poiId: z.string().optional(),
@@ -250,7 +307,8 @@ export const registerRoutes = (app: FastifyInstance): void => {
 
   /** 规格 01 §7：用户权利接口 */
   app.get('/me/:userId/memory', async (request) => {
-    const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params)
+    const { userId: claimed } = z.object({ userId: z.string().uuid() }).parse(request.params)
+    const userId = requireSelf(request, claimed)
     const [preferences, traits, footprints] = await Promise.all([
       repo.listPreferences(userId),
       repo.listIdentityTraits(userId),

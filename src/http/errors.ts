@@ -35,9 +35,24 @@ const isDependencyDown = (error: unknown): boolean => {
   return CONNECTION_MESSAGES.some((hint) => message.includes(hint))
 }
 
+const httpStatusOf = (error: unknown): number | undefined => {
+  if (typeof error !== 'object' || error === null) return undefined
+  const { httpStatus } = error as { httpStatus?: unknown }
+  return typeof httpStatus === 'number' ? httpStatus : undefined
+}
+
 export const classifyError = (error: unknown): Classified => {
   if (error instanceof ZodError) {
     return { status: 400, body: { error: 'bad_request', issues: error.issues } }
+  }
+
+  // 自家错误（鉴权、微信登录、配置缺失）自带状态码，message 是写给调用方看的
+  const own = httpStatusOf(error)
+  if (own !== undefined) {
+    // 503 才是「依赖不可用」；500 是我们自己的问题（例如配置填错），
+    // 贴成 dependency_unavailable 会把排查方向指向外部系统
+    const label = own === 503 ? 'dependency_unavailable' : own >= 500 ? 'internal_error' : 'error'
+    return { status: own, body: { error: label, message: (error as Error).message } }
   }
 
   if (isDependencyDown(error)) {

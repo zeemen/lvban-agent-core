@@ -1,5 +1,9 @@
 import { config } from '../../config'
 import { createClient, type LvbanClient } from '../../utils/api'
+import {
+  createExchange, createSessionStore, ensureSession,
+  wxLoginCode, wxStorage, type LoginDeps, type SessionStore,
+} from '../../utils/auth'
 import { createAudioQueue, wxAudioContextFactory, type AudioQueue } from '../../utils/audio'
 
 /**
@@ -35,6 +39,8 @@ type PageData = {
 
 let client: LvbanClient | null = null
 let audio: AudioQueue | null = null
+let store: SessionStore | null = null
+let loginDeps: LoginDeps | null = null
 let userId = ''
 
 const CONSENT_LABELS: Record<TrackConsent, string> = {
@@ -60,7 +66,24 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
   },
 
   onLoad() {
-    client = createClient({ baseUrl: config.baseUrl })
+    store = createSessionStore(wxStorage())
+    // 令牌现取而不是快照：登录发生在这之后
+    client = createClient({
+      baseUrl: config.baseUrl,
+      getToken: () => store?.read()?.token ?? null,
+      // 令牌过期（30 天）后自动重登一次，用户无感
+      onUnauthorized: async () => {
+        if (loginDeps === null) return null
+        return (await ensureSession(loginDeps, { forceRelogin: true })).token
+      },
+    })
+    // 注意：这里只是把依赖装好，并不调用 wx.login。
+    // code 一次性且约 5 分钟过期，预取的 code 等用户点下「开始」时多半已经废了
+    loginDeps = {
+      wxLogin: wxLoginCode,
+      exchange: createExchange(client, config.devOpenId),
+      store,
+    }
     audio = createAudioQueue({
       createContext: wxAudioContextFactory,
       onError: (src) => {
@@ -89,11 +112,12 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
 
   /** 开始旅程：这是采集的唯一入口（规格 02 §1 Usage Mode Collection） */
   async onStart() {
-    if (client === null || this.data.busy) return
+    if (client === null || loginDeps === null || this.data.busy) return
     this.setData({ busy: true })
     try {
-      const created = await client.createDevUser(config.devOpenId)
-      userId = created.userId
+      // 登录放在这里：用户按下「开始」才去换 code（PRD U01：未授权可浏览不可开旅程）
+      const session = await ensureSession(loginDeps)
+      userId = session.userId
       const journey = await client.startJourney({
         userId,
         mode: 'companion',

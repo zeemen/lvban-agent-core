@@ -12,7 +12,11 @@
  */
 export const config = {
   baseUrl: 'http://localhost:8791',
-  /** M3 阶段没有微信登录，用服务端 /v1/dev/users 建的测试用户 */
+  /**
+   * 本地联调回落身份。服务端没配 WX_APPSECRET 时 /v1/auth/wx-login 回 503，
+   * 此时用 /v1/dev/users 拿一个稳定身份把链路跑完（见 utils/auth.ts）。
+   * 服务端一旦强制鉴权，dev 接口返回 404，这条路自动失效。
+   */
   devOpenId: 'miniprogram_dev_user',
   sceneId: 'fuzimiao',
   /** 开发者工具里没有真实 GPS，用这些点位模拟到达 */

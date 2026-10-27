@@ -43,6 +43,28 @@ describe('classifyError', () => {
     expect(classifyError(notFound).status).toBe(404)
   })
 
+  test('自带 503 的错误标为 dependency_unavailable', () => {
+    const down = Object.assign(new Error('微信登录未配置'), { httpStatus: 503 })
+
+    const { status, body } = classifyError(down)
+
+    expect(status).toBe(503)
+    expect(body.error).toBe('dependency_unavailable')
+    expect(body.message).toContain('微信登录未配置')
+  })
+
+  test('自带 500 的错误标为 internal_error，不冒充依赖故障', () => {
+    const misconfigured = Object.assign(new Error('errcode 40013：检查 WX_APPID'), {
+      httpStatus: 500,
+    })
+
+    const { status, body } = classifyError(misconfigured)
+
+    expect(status).toBe(500)
+    expect(body.error).toBe('internal_error')
+    expect(body.message).toContain('WX_APPID')
+  })
+
   test('其余错误才是 500，且不把内部信息透给客户端', () => {
     const { status, body } = classifyError(new Error('某个内部断言炸了：/Users/zeemenzhou/secret'))
 

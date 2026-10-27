@@ -304,6 +304,32 @@ node --run start          # 服务端 :8791
 开发者工具里没有真实 GPS，行中页用按钮模拟「走到这里」——但走的仍是服务端
 真实的围栏判定（两次定位上报 + 去抖 + 最小停留），不绕过。
 
+## 登录与鉴权
+
+```
+小程序                        服务端                    微信
+  wx.login() ──code──▶ POST /v1/auth/wx-login
+                              ├─ GET /sns/jscode2session ──▶
+                              │   ◀── openid (+unionid)
+                              ├─ upsert app_user
+                              └─ 签发会话令牌（Redis，30 天滑动续期）
+  ◀── { userId, token } ──────┘
+  之后每个请求带 Authorization: Bearer <token>
+```
+
+要点：
+
+- **只取 openid**（PRD U01）。不索取手机号，`session_key` 拿到即丢弃——
+  不解密任何加密数据就不需要持有它，少存一个凭证少一处泄漏面。
+- **令牌存的是 SHA-256 哈希**，不是令牌本身。Redis 被读走也不能直接冒用。
+- **身份以令牌为准**，不信请求体里的 `userId`。否则填别人的 UUID
+  就能读到别人的记忆——对一个主打青少年记忆的产品这是红线。
+  旅程接口同样校验归属：拿到 `journeyId` 也驱动不了别人的行程。
+- **`wx.login` 只在用户真要登录时调**，不在 `onLoad` 预取。
+  code 一次性且约 5 分钟过期，预取的 code 等用户点下按钮时多半已经废了（errcode 40029）。
+- **`AUTH_REQUIRED`** 不设时跟着 `WX_APPSECRET` 走。开启后 `/v1/dev/users`
+  返回 404——它是无需凭证凭空造身份的后门，不能和强制鉴权并存。
+
 ## 还没做
 
 - **TTS 真实音色实测**：链路已通（见下节），但还没用真实 Key 跑过——
@@ -311,8 +337,9 @@ node --run start          # 服务端 :8791
 - **ASR**：语音输入尚未接入。
 - **锚点内容**：只录了 2 个样例锚点（江南贡院号舍、错金银重络铜壶），且审校状态为 `draft`。南博 18 件 / 夫子庙 12 处的最终名单待内容负责人核定，选点标准见规格 04 §4.3。
 - **围栏坐标**：`content/geofences/fuzimiao.json` 里是占位值，`calibrated: false`。必须按规格 02 §9.3 现场实测后替换。
-- **微信登录**：M3 用的是服务端 `/v1/dev/users` 建的测试用户。
-  真实登录要 `wx.login` → `code2session`，需要后端持有 appsecret。
+- **微信登录的真机实测**：链路已通（`wx.login` → `/v1/auth/wx-login` → `code2session`），
+  但还没用真实 appsecret 跑过。配 `WX_APPID` / `WX_APPSECRET` 即生效，
+  未配时自动回落到 `/v1/dev/users`。
 - **真机实测**：目前只在 Node 里用真实 HTTP 分片验证过解析链路，
   还没在开发者工具和真机上跑过——`onChunkReceived` 的真机表现、
   音频队列的后台播放、定位权限弹窗都待实测。

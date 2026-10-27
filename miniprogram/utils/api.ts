@@ -38,6 +38,32 @@ export type ClientOptions = {
   readonly baseUrl: string
   /** 默认用 wx.request；测试时注入假实现 */
   readonly request?: RequestFn
+  /**
+   * 每次请求现取令牌，而不是建客户端时传入 ——
+   * 登录发生在客户端创建之后，快照一份会一直发空头。
+   */
+  readonly getToken?: () => string | null
+  /**
+   * 收到 401 时重新登录，返回新令牌（拿不到则返回 null）。
+   * 只重放一次：重登后仍 401 说明不是登录态的问题，再试就是打循环。
+   */
+  readonly onUnauthorized?: () => Promise<string | null>
+}
+
+export class ApiError extends Error {
+  readonly statusCode: number
+  constructor(statusCode: number, body: unknown) {
+    super(`HTTP ${statusCode}：${JSON.stringify(body)}`)
+    this.name = 'ApiError'
+    this.statusCode = statusCode
+  }
+}
+
+export type LoginResponse = {
+  readonly userId: string
+  readonly token: string
+  readonly expiresIn: number
+  readonly isNew: boolean
 }
 
 export type Journey = {
@@ -74,17 +100,29 @@ export const createClient = (options: ClientOptions) => {
   const base = options.baseUrl.replace(/\/+$/, '')
   const request: RequestFn = options.request ?? defaultRequest()
 
-  const call = <T>(path: string, method: 'GET' | 'POST' | 'DELETE', data?: unknown): Promise<T> =>
+  /**
+   * 请求头。没有 body 时不能带 content-type：
+   * 服务端会拒绝「声明了 JSON 却是空 body」的请求（这个坑只有真实网络测得出来）。
+   */
+  const headersFor = (data: unknown, token: string | null): Record<string, string> => {
+    const header: Record<string, string> = {}
+    if (data !== undefined) header['content-type'] = 'application/json'
+    if (token !== null && token !== '') header['Authorization'] = `Bearer ${token}`
+    return header
+  }
+
+  const once = <T>(
+    path: string, method: 'GET' | 'POST' | 'DELETE', data: unknown, token: string | null,
+  ): Promise<T> =>
     new Promise((resolve, reject) => {
       request({
         url: `${base}${path}`,
         method,
         data,
-        // 没有 body 时不能带 content-type：服务端会拒绝「声明了 JSON 却是空 body」的请求
-        header: data === undefined ? {} : { 'content-type': 'application/json' },
+        header: headersFor(data, token),
         success(res) {
           if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data as T)
-          else reject(new Error(`HTTP ${res.statusCode}：${JSON.stringify(res.data)}`))
+          else reject(new ApiError(res.statusCode, res.data))
         },
         fail(err) {
           reject(new Error(err.errMsg))
@@ -92,17 +130,42 @@ export const createClient = (options: ClientOptions) => {
       })
     })
 
+  const call = async <T>(
+    path: string, method: 'GET' | 'POST' | 'DELETE', data?: unknown,
+  ): Promise<T> => {
+    const token = options.getToken?.() ?? null
+    try {
+      return await once<T>(path, method, data, token)
+    } catch (error) {
+      // 只有 401 是「登录态过期」。403 是越权，重登也没用，重放反而掩盖问题
+      const expired = error instanceof ApiError && error.statusCode === 401
+      if (!expired || options.onUnauthorized === undefined) throw error
+      const fresh = await options.onUnauthorized()
+      return once<T>(path, method, data, fresh)
+    }
+  }
+
   return {
     audioUrl(audioKey: string): string {
       return `${base}/v1/audio/${audioKey}`
     },
 
+    /** 微信登录：用 wx.login 拿到的一次性 code 换会话令牌 */
+    wxLogin(code: string): Promise<LoginResponse> {
+      return call<LoginResponse>('/v1/auth/wx-login', 'POST', { code })
+    },
+
+    logout(): Promise<unknown> {
+      return call('/v1/auth/logout', 'POST')
+    },
+
     /**
-     * 开发期建用户。M3 还没接微信登录（wx.login → code2session 需要后端
-     * 持有 appsecret），先用服务端的 dev 接口拿一个稳定 userId。
+     * 开发期建用户。没配 WX_APPSECRET 的本地环境用它拿一个稳定身份，
+     * 服务端会一并签发令牌，所以联调和线上走的是同一套鉴权。
+     * 服务端开启强制鉴权后这个接口返回 404。
      */
-    createDevUser(openid: string): Promise<{ userId: string }> {
-      return call<{ userId: string }>('/v1/dev/users', 'POST', { openid })
+    createDevUser(openid: string): Promise<{ userId: string; token: string }> {
+      return call<{ userId: string; token: string }>('/v1/dev/users', 'POST', { openid })
     },
 
     startJourney(input: {
@@ -162,9 +225,17 @@ export const createClient = (options: ClientOptions) => {
         url: `${base}/v1/journeys/${input.journeyId}/ask/stream`,
         method: 'POST',
         data: { text: input.text, poiId: input.poiId },
-        header: { 'content-type': 'application/json' },
+        header: headersFor({ text: input.text }, options.getToken?.() ?? null),
         enableChunked: true,
-        success() {
+        success(res) {
+          // 4xx/5xx 也会走 success（HTTP 请求本身完成了）。
+          // 不看状态码的话，一个 401 会表现为「正常结束但一个事件都没有」
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            if (finished) return
+            finished = true
+            handlers.onError?.(`HTTP ${res.statusCode}：讲解请求被拒绝`)
+            return
+          }
           finish()
         },
         fail(err) {

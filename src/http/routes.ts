@@ -16,6 +16,8 @@ import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
 import { readLedger } from '../models/router.js'
 import { CACHE_DIR, readCached } from '../tts/cache.js'
+import { classifyError } from './errors.js'
+import { checkDependencies } from './health.js'
 import { ttsAvailability } from '../tts/availability.js'
 import { decideVisionAnchor, recordVisionOutcome, visionHitRate } from '../vision/anchor.js'
 
@@ -36,7 +38,19 @@ const fixSchema = z.object({
 })
 
 export const registerRoutes = (app: FastifyInstance): void => {
-  app.get('/health', async () => ({ ok: true, ledger: readLedger() }))
+  // 依赖探活要真打一下 PG 和 Redis：容器停了而进程还在，是联调时最容易看岔的一种故障
+  app.get('/health', async (_request, reply) => {
+    const health = await checkDependencies()
+    return reply.code(health.ok ? 200 : 503).send({ ...health, ledger: readLedger() })
+  })
+
+  app.setErrorHandler((error, request, reply) => {
+    // SSE 已经开始推了就改不动状态码，只能留日志
+    if (reply.raw.headersSent) { request.log.error(error); return }
+    const { status, body } = classifyError(error)
+    if (status >= 500) request.log.error(error)
+    return reply.code(status).send(body)
+  })
 
   // 开发辅助：建用户。生产由微信授权创建。
   app.post('/v1/dev/users', async (request, reply) => {

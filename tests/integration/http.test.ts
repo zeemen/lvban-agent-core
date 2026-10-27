@@ -27,6 +27,25 @@ describe('健康检查', () => {
     expect(res.statusCode).toBe(200)
     expect(json<{ ok: boolean }>(res.payload).ok).toBe(true)
   })
+
+  test('逐项报告依赖状态，容器停了能一眼看出是哪个', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' })
+
+    const body = json<{ deps: { postgres: { ok: boolean }; redis: { ok: boolean } } }>(res.payload)
+    expect(body.deps.postgres.ok).toBe(true)
+    expect(body.deps.redis.ok).toBe(true)
+  })
+})
+
+describe('错误响应', () => {
+  test('负载缺字段返回 400，而不是让客户端以为服务端崩了', async () => {
+    const res = await app.inject({ method: 'POST', url: '/v1/dev/users', payload: {} })
+
+    expect(res.statusCode).toBe(400)
+    const body = json<{ error: string; issues: unknown }>(res.payload)
+    expect(body.error).toBe('bad_request')
+    expect(JSON.stringify(body.issues)).toContain('openid')
+  })
 })
 
 describe('旅程生命周期接口', () => {
@@ -52,7 +71,7 @@ describe('旅程生命周期接口', () => {
       method: 'POST', url: '/v1/journeys', payload: { mode: 'companion' },
     })
 
-    expect(res.statusCode).toBe(500)
+    expect(res.statusCode).toBe(400)
   })
 
   test('结束旅程同时返回蒸馏报告', async () => {

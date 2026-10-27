@@ -1,6 +1,6 @@
 {
   "description": "旅伴 Agent · 微信小程序（M3）",
-  "appid": "touristappid",
+  "appid": "wx4c0fb3e71c403ad9",
   "projectname": "lvban",
   "miniprogramRoot": "./",
   "compileType": "miniprogram",
@@ -9,8 +9,31 @@
     "urlCheck": false,
     "es6": true,
     "enhance": true,
-    "useCompilerPlugins": ["typescript"],
+    "useCompilerPlugins": [
+      "typescript"
+    ],
     "minified": false,
-    "postcss": true
-  }
+    "postcss": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "condition": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {}
 }

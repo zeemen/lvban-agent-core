@@ -1,5 +1,6 @@
 import type { Anchor } from '../content/loader.js'
 import type { ContextState } from '../domain/context-state.js'
+import type { Passage } from '../knowledge/weknora.js'
 import type { PlanDecision } from '../planner/decide.js'
 
 /**
@@ -16,10 +17,27 @@ export type AnswerPromptInput = {
   readonly ctx: ContextState
   readonly plan: PlanDecision
   readonly anchor: Anchor | null
+  /** K3 长尾检索命中的片段；取不到就是空数组，不是缺省值（规格 03 §5） */
+  readonly passages?: readonly Passage[]
+}
+
+/**
+ * 资料区。空的时候整段不出现——给模型一个空的「可引用的资料」标题，
+ * 等于请它往里填东西。
+ */
+const evidenceBlock = (passages: readonly Passage[]): string => {
+  if (passages.length === 0) return ''
+  const list = passages
+    .map((p, i) => `(${i + 1}) 【${p.title}】${p.text}`)
+    .join('')
+  return `【可引用的资料】${list}`
+    + `年代、名称、尺寸、出土地点、人物关系、历史事件这六类只能来自上述资料；`
+    + `资料里没写的就说不确定，不要补齐。用到哪条就顺口说出它的来源。`
 }
 
 export const buildAnswerSystemPrompt = (input: AnswerPromptInput): string => {
   const { ctx, plan, anchor } = input
+  const passages = input.passages ?? []
   return [
     `你是旅伴 agent，一个陪用户旅行的同伴，不是客服也不是讲解器。`,
     `当前模式 ${ctx.mode}，口吻档位 ${plan.register}，用户年龄段 ${ctx.ageBand}。`,
@@ -30,6 +48,7 @@ export const buildAnswerSystemPrompt = (input: AnswerPromptInput): string => {
     anchor === null ? '' : `【当前位置】${anchor.name}。`,
     `【证据纪律】年代、名称、尺寸、出土地点、人物关系、历史事件必须有据可查；`,
     `没有把握就直接说不确定，并把人引向现场说明牌，不要含糊其辞、不要编。`,
+    evidenceBlock(passages),
     ctx.memoryHooks.length === 0
       ? ''
       : `【可引用的记忆】${ctx.memoryHooks.join('；')}。自然地接上，不要生硬复述。`,

@@ -3,6 +3,7 @@ import { touchJourney } from '../context/journey.js'
 import { anchorForPlace, loadAnchors, type Anchor } from '../content/loader.js'
 import { loadFillers, pickFiller, type Situation } from '../content/fillers.js'
 import type { ContextState } from '../domain/context-state.js'
+import { retrievePassages } from '../knowledge/weknora.js'
 import { readLastFiller, recordFiller, recordSpoke } from '../memory/ephemeral.js'
 import { writeMemory } from '../memory/gateway.js'
 import { stream } from '../models/router.js'
@@ -198,6 +199,11 @@ export async function* streamQuestion(
     })
   }
 
+  // 垫音已经发出去了，这一跳藏在它后面：实测本地 BM25 检索约 23ms，垫音要念约 2s
+  const passages = await retrievePassages({
+    query: input.text, sceneId: anchor?.sceneId ?? null,
+  })
+
   const ttsVerdict = ttsAvailability()
   // 按 TTS 适配器的上限切分：腾讯 150 汉字是硬上限，超了会被直接拒绝
   const maxChars = ttsVerdict.available ? pickTtsAdapter().maxChars : undefined
@@ -211,7 +217,7 @@ export async function* streamQuestion(
   try {
     for await (const event of stream({
       task: 'qa',
-      system: buildAnswerSystemPrompt({ ctx, plan, anchor }),
+      system: buildAnswerSystemPrompt({ ctx, plan, anchor, passages }),
       user: input.text,
       maxTokens: plan.maxTokens,
     })) {
@@ -256,7 +262,14 @@ export async function* streamQuestion(
     content: full,
     anchorId: anchor?.anchorId ?? null,
     topicTags: anchor?.topics ?? [],
-    evidenceRefs: { streamed: true, guardViolations: guard.violations.length },
+    evidenceRefs: {
+      streamed: true,
+      guardViolations: guard.violations.length,
+      // 同 respond.ts：纠错队列要回答「这条是从哪来的」
+      k3: passages.map((p) => ({
+        title: p.title, knowledgeId: p.knowledgeId, chunkId: p.chunkId,
+      })),
+    },
     occurredAt: new Date(),
   })
   await recordSpoke(input.journeyId, new Date())

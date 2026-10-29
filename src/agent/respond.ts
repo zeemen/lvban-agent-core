@@ -4,6 +4,7 @@ import { decideProactivity, type Trigger } from '../context/proactivity.js'
 import { anchorForPlace, loadAnchors, type Anchor } from '../content/loader.js'
 import type { ContextState } from '../domain/context-state.js'
 import type { ProactivityDecision } from '../domain/enums.js'
+import { retrievePassages } from '../knowledge/weknora.js'
 import { recordSpoke } from '../memory/ephemeral.js'
 import { writeMemory } from '../memory/gateway.js'
 import * as repo from '../memory/repo.js'
@@ -177,7 +178,12 @@ export const onQuestion = async (input: {
     heardBefore: [],
   })
 
-  const system = buildAnswerSystemPrompt({ ctx, plan, anchor })
+  // K3 长尾证据（规格 03 §5 第三级）。取不到就空着：建档可以跳过，证据也可以没有，
+  // 但没有的时候 prompt 会让它说不确定，而不是自己补。
+  const passages = await retrievePassages({
+    query: input.text, sceneId: anchor?.sceneId ?? null,
+  })
+  const system = buildAnswerSystemPrompt({ ctx, plan, anchor, passages })
 
   const first = await complete({
     task: 'qa',
@@ -221,6 +227,10 @@ export const onQuestion = async (input: {
       costCny: result.costCny,
       reasoningTokens: result.reasoningTokens,
       rewritten: rewritten !== null,
+      // 记下这句话当时看过哪几段资料：纠错队列要回答「这条是从哪来的」
+      k3: passages.map((p) => ({
+        title: p.title, knowledgeId: p.knowledgeId, chunkId: p.chunkId,
+      })),
     },
     occurredAt: new Date(),
   })

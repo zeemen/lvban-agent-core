@@ -1,5 +1,6 @@
 import type { Profile, ProfilePatch } from '../../utils/api'
 import { getClient, requireSession } from '../../utils/app-client'
+import { AGE_BANDS, MODES, VOICE_PREFS } from '../../utils/preferences'
 
 /**
  * 行前建档（PRD U02：3 分钟建档，3 个问题，可跳过，跳过则用默认档）。
@@ -8,26 +9,6 @@ import { getClient, requireSession } from '../../utils/app-client'
  * 「跳过」是真的跳过——不写任何值，保留服务端已有的档案，
  * 而不是把默认值写进去（那样就分不清「选了 19_24」和「没答」）。
  */
-
-type Choice<T extends string> = { readonly value: T; readonly label: string; readonly desc?: string }
-
-const AGE_BANDS: readonly Choice<string>[] = [
-  { value: '12_15', label: '12–15 岁' },
-  { value: '16_18', label: '16–18 岁' },
-  { value: '19_24', label: '19–24 岁' },
-  { value: '25_plus', label: '25 岁以上' },
-]
-
-const MODES: readonly Choice<string>[] = [
-  { value: 'companion', label: '像朋友一起逛', desc: '会跟你聊，也会问你问题' },
-  { value: 'light_guide', label: '安静点，需要时再说', desc: '只在关键处开口，说得短' },
-  { value: 'family_study', label: '带孩子一起', desc: '讲故事的口吻，带探索任务' },
-]
-
-const VOICE_PREFS: readonly Choice<'voice' | 'text'>[] = [
-  { value: 'voice', label: '念给我听', desc: '边走边听，锁屏也能继续' },
-  { value: 'text', label: '只看文字', desc: '安静场合更合适' },
-]
 
 type PageData = {
   loading: boolean

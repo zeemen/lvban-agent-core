@@ -24,3 +24,15 @@
 .footer { display: flex; gap: 16rpx; }
 .footer .ghost, .footer .danger { flex: 1; }
 
+
+/* 开始之前就告诉用户这次会是什么样子 */
+.prefs {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin: 16rpx 0 8rpx;
+}
+.prefs-text { font-size: 26rpx; color: #6b5f52; }
+.prefs-edit { font-size: 26rpx; color: #8a5a2b; text-decoration: underline; flex: none; }
+.hint.warn { color: #b4472a; }

@@ -7,6 +7,13 @@
       只有现在开始之后才会采集位置。行程结束时可以看到记了什么，并一键删除。
     </view>
 
+    <!-- 让建档选的东西在开始之前就看得见，而不是开始之后才发现不对 -->
+    <view wx:if="{{profileLoaded}}" class="prefs">
+      <text class="prefs-text">这次按你建档选的来：{{modeName}} · {{voiceOn ? '念给你听' : '只显示文字'}}</text>
+      <text class="prefs-edit" bindtap="onEditProfile">改一下</text>
+    </view>
+    <view wx:if="{{profileHint}}" class="hint warn">{{profileHint}}</view>
+
     <view class="label">轨迹保存</view>
     <radio-group bindchange="onConsentChange">
       <label class="radio"><radio value="none" checked="{{trackConsent === 'none'}}" />本次不保存轨迹</label>

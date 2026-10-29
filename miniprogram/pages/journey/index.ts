@@ -1,7 +1,8 @@
 import { config } from '../../config'
-import type { LvbanClient } from '../../utils/api'
-import { getClient, requireSession } from '../../utils/app-client'
+import type { LvbanClient, Profile } from '../../utils/api'
+import { currentSession, getClient, requireSession } from '../../utils/app-client'
 import { createAudioQueue, wxAudioContextFactory, type AudioQueue } from '../../utils/audio'
+import { journeyModeFrom, modeLabel, voiceEnabledFor } from '../../utils/preferences'
 
 /**
  * 行中页 —— M3 的主链路。
@@ -32,11 +33,16 @@ type PageData = {
   timing: string
   ttsProvider: string
   pois: typeof config.pois
+  profileLoaded: boolean
+  profileHint: string
+  modeName: string
+  voiceOn: boolean
 }
 
 let client: LvbanClient | null = null
 let audio: AudioQueue | null = null
 let userId = ''
+let profile: Profile | null = null
 
 const CONSENT_LABELS: Record<TrackConsent, string> = {
   none: '本次不保存轨迹',
@@ -58,6 +64,11 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     timing: '',
     ttsProvider: '',
     pois: config.pois,
+    profileLoaded: false,
+    profileHint: '',
+    modeName: '',
+    // 档案读到之前按服务端的默认值（念给我听）
+    voiceOn: true,
   },
 
   onLoad() {
@@ -71,9 +82,46 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     })
   },
 
+  onShow() {
+    // 不是 onLoad：从建档页改完回来要立刻反映出来
+    void this.loadProfile()
+  },
+
   onUnload() {
     audio?.destroy()
     audio = null
+  },
+
+  /**
+   * 读档案，决定这次用哪副面孔、放不放声音（PRD U02）。
+   * 没登录就不读（PRD U01：未授权可浏览）；读不到也不算失败——
+   * 建档本来就可以跳过，回落到默认值继续走，但要说出来，
+   * 否则用户会以为自己建档选的生效了。
+   */
+  async loadProfile() {
+    if (currentSession() === null) return
+    try {
+      profile = await getClient().getProfile()
+      this.setData({ profileHint: '' })
+    } catch (error) {
+      profile = null
+      this.setData({ profileHint: `读不到你的档案，这次先按默认的来：${(error as Error).message}` })
+    }
+    this.setData({
+      profileLoaded: profile !== null,
+      modeName: modeLabel(journeyModeFrom(profile)),
+      voiceOn: voiceEnabledFor(profile),
+    })
+  },
+
+  onEditProfile() {
+    wx.navigateTo({ url: '/pages/profile/index' })
+  },
+
+  /** 建档里选了「只看文字」就不排队播——文字照常显示 */
+  playAudio(audioKey: string) {
+    if (!this.data.voiceOn || client === null) return
+    audio?.push(client.audioUrl(audioKey))
   },
 
   appendLine(line: Line) {
@@ -96,9 +144,12 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
       // 登录放在这里：用户按下「开始」才去换 code（PRD U01：未授权可浏览不可开旅程）
       const session = await requireSession()
       userId = session.userId
+      // 页面打开时可能还没登录，档案要等到这一刻才读得到
+      if (profile === null) await this.loadProfile()
+      const mode = journeyModeFrom(profile)
       const journey = await client.startJourney({
         userId,
-        mode: 'companion',
+        mode,
         party: 'solo',
         sceneId: config.sceneId,
         trackConsent: this.data.trackConsent,
@@ -108,8 +159,11 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
         journeyId: journey.journeyId,
         lines: [{
           kind: 'system',
-          text: `旅程已开始 · ${CONSENT_LABELS[this.data.trackConsent as TrackConsent]}`,
-          note: '只有现在开始之后才会采集位置；随时可以结束并一键删除',
+          text: `旅程已开始 · ${modeLabel(mode)}`
+            + ` · ${CONSENT_LABELS[this.data.trackConsent as TrackConsent]}`,
+          note: this.data.voiceOn
+            ? '只有现在开始之后才会采集位置；随时可以结束并一键删除'
+            : '按你建档选的只显示文字、不放声音；位置也只在现在之后才采集',
         }],
       })
     } catch (error) {
@@ -172,7 +226,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
         onEvent: (event) => {
           if (event.type === 'filler') {
             // 垫音是本地预合成的：先播声音，再显示文字
-            audio?.push(client!.audioUrl(event.audioKey))
+            this.playAudio(event.audioKey)
             this.appendLine({
               kind: 'filler', text: event.text,
               note: `${Date.now() - started}ms · 预合成`,
@@ -196,7 +250,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
           }
 
           if (event.type === 'audio') {
-            audio?.push(client!.audioUrl(event.audioKey))
+            this.playAudio(event.audioKey)
             return
           }
 

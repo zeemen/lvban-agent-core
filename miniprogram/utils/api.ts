@@ -91,6 +91,8 @@ export type Profile = {
   readonly defaultMode: string
   readonly voicePref: 'voice' | 'text'
   readonly isMinor: boolean
+  /** 建档三问里答过任意一问；用来决定行前要不要提醒一次 */
+  readonly profileCompleted: boolean
 }
 
 export type ProfilePatch = {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MODES, journeyModeFrom, modeLabel, voiceEnabledFor,
+  MODES, createNudgeStore, journeyModeFrom, modeLabel,
+  shouldSuggestProfile, voiceEnabledFor,
 } from '../../miniprogram/utils/preferences'
 import { MODES as SERVER_MODES } from '../../src/domain/enums.js'
 
@@ -12,8 +13,8 @@ import { MODES as SERVER_MODES } from '../../src/domain/enums.js'
  * 放在页面里就只能靠手点，而它们恰恰是会让「开始」整个失败的分支。
  */
 
-const profile = (defaultMode: string, voicePref = 'voice') =>
-  ({ defaultMode, voicePref }) as never
+const profile = (defaultMode: string, voicePref = 'voice', profileCompleted = true) =>
+  ({ defaultMode, voicePref, profileCompleted }) as never
 
 describe('开旅程用哪种模式', () => {
   it('用档案里选的模式，而不是写死的 companion', () => {
@@ -59,5 +60,55 @@ describe('两端的模式取值', () => {
     // 两边各写一份常量，改了一边不改另一边时，症状是「选了某个模式就开不了旅程」，
     // 要到运行时才看得见。这条用例让它在改动的当下就红
     expect([...MODES.map((m) => m.value)].sort()).toEqual([...SERVER_MODES].sort())
+  })
+})
+
+describe('要不要提醒去建档', () => {
+  it('没建过档就提醒', () => {
+    expect(shouldSuggestProfile(profile('companion', 'voice', false), false)).toBe(true)
+  })
+
+  it('建过档就不提——哪怕三问里只答了一问', () => {
+    expect(shouldSuggestProfile(profile('companion', 'voice', true), false)).toBe(false)
+  })
+
+  it('说过「先不用」之后不再提：它是提醒，不是关卡', () => {
+    expect(shouldSuggestProfile(profile('companion', 'voice', false), true)).toBe(false)
+  })
+
+  it('还没登录（取不到档案）时不提，这时候问没有意义', () => {
+    expect(shouldSuggestProfile(null, false)).toBe(false)
+  })
+})
+
+describe('「先不用」记在本机', () => {
+  const fakeStorage = (impl: Partial<Record<'get' | 'set', unknown>> = {}) => {
+    const box: Record<string, unknown> = {}
+    return {
+      get: (impl.get as never) ?? ((k: string) => box[k]),
+      set: (impl.set as never) ?? ((k: string, v: unknown) => { box[k] = v }),
+      remove: (k: string) => { delete box[k] },
+    }
+  }
+
+  it('记下之后再问就是已拒绝', () => {
+    const store = createNudgeStore(fakeStorage())
+    expect(store.dismissed()).toBe(false)
+    store.dismiss()
+    expect(store.dismissed()).toBe(true)
+  })
+
+  it('存储读不了时当成没拒绝过，而不是让页面崩掉', () => {
+    const store = createNudgeStore(fakeStorage({
+      get: () => { throw new Error('storage unavailable') },
+    }))
+    expect(store.dismissed()).toBe(false)
+  })
+
+  it('存储写不进去也不抛——记不住顶多下次再问一遍', () => {
+    const store = createNudgeStore(fakeStorage({
+      set: () => { throw new Error('quota exceeded') },
+    }))
+    expect(() => { store.dismiss() }).not.toThrow()
   })
 })

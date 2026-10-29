@@ -1,4 +1,5 @@
 import type { Profile } from './api'
+import type { StorageLike } from './auth'
 
 /**
  * 建档三问的选项，以及「档案怎么影响这次旅程」。
@@ -58,3 +59,40 @@ export const voiceEnabledFor = (profile: Profile | null): boolean =>
 /** 告诉用户这次是哪副面孔；模式不认识时原样显示，总比显示空白强 */
 export const modeLabel = (mode: string): string =>
   MODES.find((m) => m.value === mode)?.label ?? mode
+
+/**
+ * 行前要不要提醒去建档。
+ *
+ * 建过档就不提，哪怕三问里只答了一问——催第二遍就成了骚扰。
+ * 本机说过「先不用」也不提：它是提醒，不是关卡（PRD U02 建档可跳过）。
+ * 没登录时同样不提，那时候问了也没处存。
+ */
+export const shouldSuggestProfile = (
+  profile: Profile | null, dismissed: boolean,
+): boolean => profile !== null && !profile.profileCompleted && !dismissed
+
+const NUDGE_KEY = 'lvban.profile_nudge_dismissed'
+
+export type NudgeStore = {
+  /** 这台设备上说过「先不用」 */
+  dismissed(): boolean
+  dismiss(): void
+}
+
+/**
+ * 「先不用」只记在本机：它是这台设备上的一次性打扰额度，不是用户画像，
+ * 没有理由为它往服务端写一条记录。
+ */
+export const createNudgeStore = (storage: StorageLike): NudgeStore => ({
+  dismissed() {
+    try {
+      return storage.get(NUDGE_KEY) === true
+    } catch {
+      // 读不到就当没拒绝过：多问一次，总好过页面崩在一个提示上
+      return false
+    }
+  },
+  dismiss() {
+    try { storage.set(NUDGE_KEY, true) } catch { /* 记不住顶多下次再问一遍 */ }
+  },
+})

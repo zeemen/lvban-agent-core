@@ -2,7 +2,11 @@ import { config } from '../../config'
 import type { LvbanClient, Profile } from '../../utils/api'
 import { currentSession, getClient, requireSession } from '../../utils/app-client'
 import { createAudioQueue, wxAudioContextFactory, type AudioQueue } from '../../utils/audio'
-import { journeyModeFrom, modeLabel, voiceEnabledFor } from '../../utils/preferences'
+import { wxStorage } from '../../utils/auth'
+import {
+  createNudgeStore, journeyModeFrom, modeLabel, shouldSuggestProfile,
+  voiceEnabledFor, type NudgeStore,
+} from '../../utils/preferences'
 
 /**
  * 行中页 —— M3 的主链路。
@@ -35,6 +39,7 @@ type PageData = {
   pois: typeof config.pois
   profileLoaded: boolean
   profileHint: string
+  suggestProfile: boolean
   modeName: string
   voiceOn: boolean
 }
@@ -43,6 +48,7 @@ let client: LvbanClient | null = null
 let audio: AudioQueue | null = null
 let userId = ''
 let profile: Profile | null = null
+let nudge: NudgeStore | null = null
 
 const CONSENT_LABELS: Record<TrackConsent, string> = {
   none: '本次不保存轨迹',
@@ -66,6 +72,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     pois: config.pois,
     profileLoaded: false,
     profileHint: '',
+    suggestProfile: false,
     modeName: '',
     // 档案读到之前按服务端的默认值（念给我听）
     voiceOn: true,
@@ -73,6 +80,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
 
   onLoad() {
     client = getClient()
+    nudge = createNudgeStore(wxStorage())
     audio = createAudioQueue({
       createContext: wxAudioContextFactory,
       onError: (src) => {
@@ -111,7 +119,14 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
       profileLoaded: profile !== null,
       modeName: modeLabel(journeyModeFrom(profile)),
       voiceOn: voiceEnabledFor(profile),
+      suggestProfile: shouldSuggestProfile(profile, nudge?.dismissed() ?? false),
     })
+  },
+
+  /** 「先不用」：这台设备上不再提，但默认值是什么要接着给他看 */
+  onDismissProfileNudge() {
+    nudge?.dismiss()
+    this.setData({ suggestProfile: false })
   },
 
   onEditProfile() {

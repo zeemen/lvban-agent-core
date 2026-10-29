@@ -71,3 +71,38 @@ describe('建档', () => {
     expect((await getProfile(owner))?.ageBand).toBe('19_24')
   })
 })
+
+/**
+ * 「建过档了吗」不能靠看值猜：三问都有数据库默认值，
+ * 选了 companion 和从没打开过建档页在库里长得一样。
+ * 行前提示要不要出现全看这一位，判错了不是漏提醒就是反复骚扰。
+ */
+describe('建过档了吗', () => {
+  test('新用户没建过档', async () => {
+    expect((await getProfile(await createUser()))?.profileCompleted).toBe(false)
+  })
+
+  test('答了一问就算建过——不要求三问答全', async () => {
+    const userId = await createUser()
+
+    await updateProfile(userId, { voicePref: 'text' })
+
+    expect((await getProfile(userId))?.profileCompleted).toBe(true)
+  })
+
+  test('答的恰好是默认值也算建过，这正是单看值分不出来的情况', async () => {
+    const userId = await createUser()
+
+    await updateProfile(userId, { defaultMode: 'companion' })
+
+    expect((await getProfile(userId))?.profileCompleted).toBe(true)
+  })
+
+  test('只改昵称不算建档——昵称不是建档问的三个问题之一', async () => {
+    const userId = await createUser()
+
+    await updateProfile(userId, { nickname: '阿要' })
+
+    expect((await getProfile(userId))?.profileCompleted).toBe(false)
+  })
+})

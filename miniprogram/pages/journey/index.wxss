@@ -36,3 +36,16 @@
 .prefs-text { font-size: 26rpx; color: #6b5f52; }
 .prefs-edit { font-size: 26rpx; color: #8a5a2b; text-decoration: underline; flex: none; }
 .hint.warn { color: #b4472a; }
+
+/* 行前提醒：看得见，但不挡路 */
+.nudge {
+  margin: 16rpx 0 8rpx;
+  padding: 20rpx 24rpx;
+  background: #fbf6ec;
+  border: 1rpx solid #e3d8c4;
+  border-radius: 12rpx;
+}
+.nudge-text { font-size: 26rpx; color: #6b5f52; line-height: 1.6; }
+.nudge-actions { display: flex; gap: 32rpx; margin-top: 12rpx; }
+.nudge-go { font-size: 26rpx; color: #8a5a2b; text-decoration: underline; }
+.nudge-skip { font-size: 26rpx; color: #9a9088; }

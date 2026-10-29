@@ -7,8 +7,19 @@
       只有现在开始之后才会采集位置。行程结束时可以看到记了什么，并一键删除。
     </view>
 
+    <!-- PRD U02：行前提醒一次，但不挡——建档本来就可以跳过 -->
+    <view wx:if="{{suggestProfile}}" class="nudge">
+      <view class="nudge-text">
+        还没建档。三个问题，决定它用什么口吻跟你说话，一分钟不到。
+      </view>
+      <view class="nudge-actions">
+        <text class="nudge-go" bindtap="onEditProfile">去建档</text>
+        <text class="nudge-skip" bindtap="onDismissProfileNudge">先不用，按默认来</text>
+      </view>
+    </view>
+
     <!-- 让建档选的东西在开始之前就看得见，而不是开始之后才发现不对 -->
-    <view wx:if="{{profileLoaded}}" class="prefs">
+    <view wx:if="{{profileLoaded && !suggestProfile}}" class="prefs">
       <text class="prefs-text">这次按你建档选的来：{{modeName}} · {{voiceOn ? '念给你听' : '只显示文字'}}</text>
       <text class="prefs-edit" bindtap="onEditProfile">改一下</text>
     </view>

@@ -49,7 +49,7 @@ node --run test
 node --run coverage
 ```
 
-当前：169 个测试，行覆盖 95.7%，分支覆盖 83.2%。
+当前：621 个测试通过、5 个跳过，行覆盖 92.8%，分支覆盖 85.5%。
 
 ## M2 做到了什么
 
@@ -289,7 +289,16 @@ type _WireContractHolds = [StreamedEvent] extends [WireEvent] ? true : never
 
 ```bash
 node --run start          # 服务端 :8791
+node --run dev            # 同上，但 tsx watch，改了代码自动重起
 ```
+
+`node --run start` 不是 watch 模式：改了 `src/` 下的代码必须把它重启，
+不然接口还在跑旧代码。这个症状很会骗人——加 `profileCompleted` 字段那次，
+测试全绿、迁移也 apply 了，curl 回来却没这个字段，看起来像迁移没生效，
+其实是进程没换。边改边联调就用 `node --run dev`。
+
+改了 `migrations/` 之后要 `node --run db:migrate`。迁移改的是库、代码改的是读法，
+两边都得动：只跑迁移，接口不会多出新字段；只改代码，查询会撞上不存在的列。
 
 端口用 8791 而不是常见的 8787：本机常有别的服务占着 127.0.0.1:8787。
 两个进程能同时绑同一端口号（一个 `*:8787`、一个 `127.0.0.1:8787`），

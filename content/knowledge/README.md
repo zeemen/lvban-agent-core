@@ -28,6 +28,7 @@ Docker 卷里（`/data/files/10000/<knowledge_id>/<时间戳>.md`），没有 di
 |---|---|
 | fuzimiao/kb-dacheng.md | `f8543cd0-ec46-4ca5-ad9f-fdb4929d23de` |
 | fuzimiao/kb-gongyuan.md | `8cf5487a-1db2-4d0c-ae13-2c6ef8fc5193` |
+| fuzimiao/kb-gongyuan-scale.md | `a12ea6d2-bbee-4b2c-a049-b7d1e17d9dfe` |
 | fuzimiao/kb-haoshe.md | `84f2ce6a-4135-40e3-91de-a62e6778fb05` |
 | fuzimiao/kb-mingyuan.md | `6d8aba91-806f-4218-8850-c896712a6408` |
 | fuzimiao/kb-panchi.md | `15868f44-ad98-4c3c-aa81-e9485db0615d` |
@@ -36,6 +37,7 @@ Docker 卷里（`/data/files/10000/<knowledge_id>/<时间戳>.md`），没有 di
 | fuzimiao/kb-wenshu.md | `3acc9297-3a44-427b-a564-155f259e422b` |
 | fuzimiao/kb-wuyi.md | `5c61c654-4351-4b3d-a755-d6bbaf434f9b` |
 | nanjing_museum/kb-bamboo.md | `00ddcf50-6f32-4f45-8c33-c1151eceb1bb` |
+| nanjing_museum/kb-cuojinyin-hu.md | `228e8ee0-6ba3-4fbe-be59-63f55aefb01d` |
 | nanjing_museum/kb-digital-hall.md | `7b0873b3-1bf5-43b4-8bad-b9d5aeb77d59` |
 | nanjing_museum/kb-history-hall.md | `2603fdfc-4722-4fb1-afae-e1d42058ba5e` |
 | nanjing_museum/kb-intangible-hall.md | `84581577-094e-4b5f-98ce-deffd374306b` |
@@ -65,6 +67,19 @@ Docker 卷里（`/data/files/10000/<knowledge_id>/<时间戳>.md`），没有 di
 另外，删除是异步的：DELETE 之后那行会停在 `parse_status='deleting'` 一小会儿，
 这期间重传会按 file_hash 命中那条将死的记录，看起来「传成功了」其实没有。
 等到 `deleted_at IS NULL` 的行数归零再传。
+
+## 关键词那一行是给检索用的，不是摘抄
+
+BM25 是字面匹配，语料里没有的词就搜不到。2026-10-30 实测：问「科举制什么时候
+**废除**的」，kb-gongyuan-scale 只排第三（0.943），前两名是照壁泮池和大成殿——
+因为来源原文写的是「下诏**停止**科举」，全篇没有「废除」二字。
+
+`关键词` 这一行是我们自己写的元数据，不是引文，可以也应该补上游客真会用的说法
+（废除、停科举、关门、取消）。补词不需要来源背书，补事实才需要。
+
+顺带一提，这个库只有十几篇，BM25 分数几乎不分高下（上例前三名 0.969／0.951／
+0.943），别指望靠排序把不相关的挡在外面——`maxPassages=3` 的窗口里混进两条无关
+片段是常态，真正兜住的是 prompt 的证据纪律和 must_cite 回查。
 
 ## 怎么把改动回传到 WeKnora
 

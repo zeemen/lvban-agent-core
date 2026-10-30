@@ -3,6 +3,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import { onArrive, onQuestion } from '../agent/respond.js'
+import { registerAdminKnowledgeRoutes } from './admin-knowledge.js'
+import { ADMIN_KNOWLEDGE_HTML } from './admin-page.js'
 import { streamQuestion } from '../agent/respond-stream.js'
 import { endJourney, purgeJourneyData, startJourney } from '../context/journey.js'
 import { ingestFixes } from '../context/ingest.js'
@@ -72,6 +74,9 @@ const readMemory = async (userId: string) => {
 
 export const registerRoutes = (app: FastifyInstance): void => {
   registerAuthHook(app)
+
+  // 运营后台 · 知识管理（规格 04 §274）。没有 ADMIN_TOOLS=true 就一条都不注册
+  registerAdminKnowledgeRoutes(app, ADMIN_KNOWLEDGE_HTML)
 
   // 依赖探活要真打一下 PG 和 Redis：容器停了而进程还在，是联调时最容易看岔的一种故障
   app.get('/health', async (_request, reply) => {

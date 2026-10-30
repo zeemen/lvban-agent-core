@@ -95,6 +95,45 @@ describe('二、值得挂对主语（软，拦张冠李戴）', () => {
     const got = checkCitations('明远楼是北宋景德三年建的', EVIDENCE)
     expect(got.violations.filter((v) => v.value === '北宋景德三年')).toHaveLength(1)
   })
+
+  /*
+   * 2026-10-30 实测 36 条抽样，软层命中 6 条，6 条全是误报。两个根因各占一半，
+   * 下面两组用例就是那两个根因的原话。
+   */
+  test('主语在值后面也算挂对——中文「1960年从某地出土」和证据的语序正相反', () => {
+    const ev = ['南京西善桥宫山南朝墓于1960年出土竹林七贤及荣启期砖印壁画。']
+    const answer = '1960年从南京西善桥宫山南朝墓出土的，故宫博物院院刊那篇资料里写的。'
+    expect(checkCitations(answer, ev).violations).toEqual([])
+  })
+
+  test('值在句首、主语整句都没有，才该判挂不上', () => {
+    const ev = ['南京西善桥宫山南朝墓于1960年出土竹林七贤及荣启期砖印壁画。']
+    expect(checkCitations('1960年。', ev).violations).toHaveLength(1)
+  })
+})
+
+describe('文献名里的年份不是年代主张', () => {
+  const ev = ['南京博物院2021年年鉴记载，江都王临时展以盱眙大云山西汉江都王陵出土文物为基础。']
+
+  test('「2021年年鉴」里的 2021 年是书名的一部分，不该当成史实回查', () => {
+    expect(extractCitedValues('南博2021年年鉴里写的是盱眙大云山').map((v) => v.value))
+      .not.toContain('2021年')
+  })
+
+  test('年报、年刊、第几期、第几号同理', () => {
+    const vals = extractCitedValues('见2019年年报、2025年第1期、2013年第3号').map((v) => v.value)
+    expect(vals).toEqual([])
+  })
+
+  test('但正经的年代还是要抓', () => {
+    expect(extractCitedValues('1960年出土').map((v) => v.value)).toEqual(['1960年'])
+  })
+
+  test('实测那条误报：整句不再有任何违规', () => {
+    const answer = '南博2021年年鉴里写的是盱眙大云山西汉江都王陵，'
+      + '不过那是往年的临时展记录，你眼前这件是不是同一件我不敢打包票。'
+    expect(checkCitations(answer, ev).violations).toEqual([])
+  })
 })
 
 describe('打回重写时告诉模型哪几条没依据', () => {

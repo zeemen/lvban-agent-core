@@ -25,7 +25,7 @@
  *     先记进 evidenceRefs，拿真实流量量出误报率再决定要不要升级成硬拦。
  */
 
-const MIN_SUBJECT_OVERLAP = 3
+const MIN_CONTEXT_OVERLAP = 3
 
 export type CiteLabel = '年代' | '尺寸' | '出土地点'
 
@@ -53,7 +53,12 @@ const PATTERNS: readonly { readonly label: CiteLabel; readonly pattern: RegExp }
     label: '年代',
     pattern: /(?:[东西南北])?(?:夏|商|周|秦|汉|魏|晋|隋|唐|宋|辽|金|元|明|清|民国)[一-鿿]{1,4}?(?:年间|年)/g,
   },
-  { label: '年代', pattern: /(?:公元前|公元)?\d{1,4}年/g },
+  /*
+   * 公元纪年。后面跟着年鉴／年报／年刊／版／第几期的，是文献名的一部分，不是史实主张：
+   * 「南博2021年年鉴记载…」里的 2021 年说的是那本书，不是谁在 2021 年干了什么。
+   * 2026-10-30 实测 36 条，软层 6 次误报里有 3 次栽在这上面。
+   */
+  { label: '年代', pattern: /(?:公元前|公元)?\d{1,4}年(?!年鉴|年报|年刊|鉴|报|刊|版|第)/g },
   { label: '年代', pattern: /(?:公元前|公元)?[\d一二三四五六七八九十]{1,3}世纪/g },
   { label: '尺寸', pattern: /\d+(?:\.\d+)?(?:厘米|毫米|公里|米|公斤|千克|克|斤|吨|cm|mm|kg)/g },
   {
@@ -100,21 +105,28 @@ const sharesSpan = (a: string, b: string, n: number): boolean => {
   return false
 }
 
-/** 值在某句话里的「主语位」——它前面那段，去掉标点 */
-const subjectOf = (sentence: string, value: string): string =>
-  bare(sentence.slice(0, sentence.indexOf(value)))
+/**
+ * 值在某句话里的上下文：整句挖掉这个值本身，再去掉标点。
+ *
+ * 原先只取值前面那段，当「主语位」用。实测 36 条里有 3 次栽在这上面：
+ * 证据写「南京西善桥宫山南朝墓于1960年出土」，主语在前；回答说
+ * 「1960年从南京西善桥宫山南朝墓出土的」，主语在后。中文两种语序都对，
+ * 只看前面就等于判定后一种是张冠李戴。挖掉值看整句，两种语序都认。
+ */
+const contextOf = (sentence: string, value: string): string =>
+  bare(sentence.split(value).join(''))
 
 /**
- * 回答里这个值挂的主语，和证据里同一个值挂的主语，对得上吗。
+ * 回答里这个值挂的事，和证据里同一个值挂的事，对得上吗。
  * 只要有任意一条证据句对得上就算对得上——同一个事实可能被多处提到。
  */
 const attributionHolds = (
   answerSentence: string, value: string, evidenceSentences: readonly string[],
 ): boolean => {
-  const claimed = subjectOf(answerSentence, value)
+  const claimed = contextOf(answerSentence, value)
   return evidenceSentences
     .filter((e) => e.includes(value))
-    .some((e) => sharesSpan(claimed, subjectOf(e, value), MIN_SUBJECT_OVERLAP))
+    .some((e) => sharesSpan(claimed, contextOf(e, value), MIN_CONTEXT_OVERLAP))
 }
 
 /**

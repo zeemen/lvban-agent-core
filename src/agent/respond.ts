@@ -9,9 +9,11 @@ import { recordSpoke } from '../memory/ephemeral.js'
 import { writeMemory } from '../memory/gateway.js'
 import * as repo from '../memory/repo.js'
 import { complete } from '../models/router.js'
+import { buildCiteRewriteSuffix, checkCitations } from '../planner/cite-guard.js'
 import { decidePlan, type PlanDecision } from '../planner/decide.js'
 import { checkRegister } from '../planner/register-guard.js'
 import { renderFromAnchor } from '../planner/render.js'
+import { evidenceTexts } from './evidence.js'
 import { buildAnswerSystemPrompt, buildRewriteSuffix } from './prompt.js'
 
 /**
@@ -20,6 +22,13 @@ import { buildAnswerSystemPrompt, buildRewriteSuffix } from './prompt.js'
  * 这是 M2 的主链路，也是 M3 小程序要调的同一套逻辑。
  * 链路顺序严格对应企划书第 06 节的五个问题。
  */
+
+/**
+ * 回查两次都拿不出依据时说的话（规格 03 §5.3）。
+ * 刻意不留任何具体数字：这句话存在的理由就是「没有可引用的事实」。
+ */
+const DEGRADED_ANSWER =
+  '这个我手头的资料对不上，不敢跟你瞎说。现场说明牌写得比我准，你要是拍一张给我，我帮你看看。'
 
 let anchorCache: ReadonlyMap<string, Anchor> | null = null
 
@@ -184,6 +193,7 @@ export const onQuestion = async (input: {
     query: input.text, sceneId: anchor?.sceneId ?? null,
   })
   const system = buildAnswerSystemPrompt({ ctx, plan, anchor, passages })
+  const evidence = evidenceTexts(passages, anchor)
 
   const first = await complete({
     task: 'qa',
@@ -193,25 +203,41 @@ export const onQuestion = async (input: {
   })
 
   /*
-   * 规格 03 §9.1：口吻守卫命中即打回重写，不是只告警。
-   * 实测 deepseek-flash 会连说三句事实而不对用户开口一次（too_many_facts），
-   * 只记日志的话这种退化会一路漏到用户耳朵里。
-   * 重写只给一次机会：再不过就带着命中记录输出，由运营后台看见。
+   * 两道守卫，都是命中即打回重写，不是只告警。
+   *
+   * 口吻（规格 03 §9.1）：实测 deepseek-flash 会连说三句事实而不对用户开口一次
+   * （too_many_facts），只记日志的话这种退化会一路漏到用户耳朵里。
+   *
+   * 回查（规格 03 §5.1）：说出资料里查不到的年代、尺寸、出土地点就打回。
+   *
+   * 重写只给一次机会。口吻再不过就带着命中记录输出，由运营后台看见；
+   * 但回查再不过不能放行——那是在念一个没有出处的事实，只能降级（见下）。
    */
   const firstGuard = checkRegister(first.text, plan.register)
-  const rewritten = firstGuard.ok
+  const firstCite = checkCitations(first.text, evidence)
+  const rewritten = firstGuard.ok && firstCite.ok
     ? null
     : await complete({
         task: 'qa',
-        system: system + buildRewriteSuffix(
-          firstGuard.violations.map((v) => v.rule), plan.maxChars,
-        ),
+        system: system
+          + (firstGuard.ok ? '' : buildRewriteSuffix(
+              firstGuard.violations.map((v) => v.rule), plan.maxChars,
+            ))
+          + buildCiteRewriteSuffix(firstCite.violations, plan.maxChars),
         user: input.text,
         maxTokens: plan.maxTokens,
       })
 
   const result = rewritten ?? first
-  const guard = rewritten === null ? firstGuard : checkRegister(rewritten.text, plan.register)
+  const guard = rewritten === null ? firstGuard : checkRegister(result.text, plan.register)
+  const cite = rewritten === null ? firstCite : checkCitations(result.text, evidence)
+
+  /*
+   * 规格 03 §5.3：查不到就说不确定，并把人引向现场说明牌。
+   * 重写过一次仍然拿不出依据，说明模型在凭记忆补——这时候宁可少说一句，
+   * 也不能把一个无出处的年代念给站在文物前面的人听。
+   */
+  const text = cite.ok ? result.text : DEGRADED_ANSWER
 
   await writeMemory({
     kind: 'interaction',
@@ -219,7 +245,7 @@ export const onQuestion = async (input: {
     journeyId: input.journeyId,
     role: 'agent',
     channel: 'text',
-    content: result.text,
+    content: text,
     anchorId: anchor?.anchorId ?? null,
     topicTags: anchor?.topics ?? [],
     evidenceRefs: {
@@ -227,6 +253,10 @@ export const onQuestion = async (input: {
       costCny: result.costCny,
       reasoningTokens: result.reasoningTokens,
       rewritten: rewritten !== null,
+      // 回查结果：降级过没有、软违规（挂错主语）有哪些。
+      // 软违规现在只记不拦，要靠这里的真实流量量出误报率
+      degraded: !cite.ok,
+      citeViolations: cite.violations.map((v) => `${v.rule}:${v.label}:${v.value}`),
       // 记下这句话当时看过哪几段资料：纠错队列要回答「这条是从哪来的」
       k3: passages.map((p) => ({
         title: p.title, knowledgeId: p.knowledgeId, chunkId: p.chunkId,
@@ -242,9 +272,16 @@ export const onQuestion = async (input: {
     proactivityReason: 'user_initiated',
     vetoedBy: null,
     plan,
-    text: result.text,
-    usedElements: rewritten === null ? ['model:qa'] : ['model:qa', 'model:qa:rewrite'],
-    guardViolations: guard.violations.map((v) => `${v.rule}:${v.matched}`),
+    text,
+    usedElements: [
+      'model:qa',
+      ...(rewritten === null ? [] : ['model:qa:rewrite']),
+      ...(cite.ok ? [] : ['guard:cite:degraded']),
+    ],
+    guardViolations: [
+      ...guard.violations.map((v) => `${v.rule}:${v.matched}`),
+      ...cite.violations.map((v) => `${v.rule}:${v.value}`),
+    ],
     context: ctx,
     fromCache: false,
   }

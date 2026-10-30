@@ -7,6 +7,7 @@ import { retrievePassages } from '../knowledge/weknora.js'
 import { readLastFiller, recordFiller, recordSpoke } from '../memory/ephemeral.js'
 import { writeMemory } from '../memory/gateway.js'
 import { stream } from '../models/router.js'
+import { checkCitations } from '../planner/cite-guard.js'
 import { decidePlan, type PlanDecision } from '../planner/decide.js'
 import { checkRegister } from '../planner/register-guard.js'
 import { createSentenceSplitter } from '../planner/sentence.js'
@@ -14,6 +15,7 @@ import { ttsAvailability } from '../tts/availability.js'
 import { pickTtsAdapter, synthesize, ttsProvider } from '../tts/router.js'
 import { resolveVoice } from '../tts/voices.js'
 import type { WireEvent } from '../../miniprogram/shared/stream-events.js'
+import { evidenceTexts } from './evidence.js'
 import { buildAnswerSystemPrompt } from './prompt.js'
 
 /**
@@ -252,6 +254,13 @@ export async function* streamQuestion(
   }
 
   const guard = checkRegister(full, plan.register)
+  /*
+   * 回查（规格 03 §5.1）在这条路上只能记，不能拦——第一个字已经发出去了，
+   * 收不回来，更没法像 respond.ts 那样降级成「我不确定」。
+   * 预防交给 prompt 里的证据纪律；这里记下来，是为了让纠错队列能回答
+   * 「这句话有没有依据」，也为了量出流式和非流式的差距到底有多大。
+   */
+  const cite = checkCitations(full, evidenceTexts(passages, anchor))
 
   await writeMemory({
     kind: 'interaction',
@@ -265,6 +274,9 @@ export async function* streamQuestion(
     evidenceRefs: {
       streamed: true,
       guardViolations: guard.violations.length,
+      // 流式拦不住，只记：有没有念出没依据的事实、有没有挂错主语
+      citeOk: cite.ok,
+      citeViolations: cite.violations.map((v) => `${v.rule}:${v.label}:${v.value}`),
       // 同 respond.ts：纠错队列要回答「这条是从哪来的」
       k3: passages.map((p) => ({
         title: p.title, knowledgeId: p.knowledgeId, chunkId: p.chunkId,

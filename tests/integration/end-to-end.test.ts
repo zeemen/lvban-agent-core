@@ -245,7 +245,7 @@ describe('第二次使用的分水岭 —— H5', () => {
   })
 })
 
-describe('口吻守卫触发重写 —— 规格 03 §9.1「命中即打回重写」', () => {
+describe('两道守卫触发重写 —— 口吻（规格 03 §9.1）与回查（§5.1）', () => {
   /** 按调用次数依次返回预设文本的适配器 */
   const scriptedAdapter = (replies: readonly string[]): ModelAdapter => {
     let call = 0
@@ -321,5 +321,54 @@ describe('口吻守卫触发重写 —— 规格 03 §9.1「命中即打回重�
     expect(turn.spoke).toBe(true)
     expect(turn.guardViolations.length).toBeGreaterThan(0)
     expect(turn.usedElements).toContain('model:qa:rewrite')
+  })
+
+  /*
+   * 这个点位的锚点 k1Sources 为空，WeKnora 在测试里也没配，
+   * 所以「可回查的资料」确实是空的——说出任何年代都该是无依据。
+   * 这正是规格 03 §5.1 想要的严格：没有来源就不许讲事实。
+   */
+  test('说出查不到的年代会被打回重写', async () => {
+    const madeUp = '江南贡院是北宋景德三年建的，你站在这儿想想当年。'
+    const honest = '具体哪年我不确定，你看看现场说明牌怎么写的？'
+    registerAdapter(scriptedAdapter([madeUp, honest]))
+    const userId = await createUser()
+    const journey = await openAndArrive(userId)
+
+    const turn = await onQuestion({
+      journeyId: journey.id, text: '江南贡院什么时候建的', poiId: POI,
+    })
+
+    expect(turn.text).toBe(honest)
+    expect(turn.usedElements).toContain('model:qa:rewrite')
+    expect(turn.usedElements).not.toContain('guard:cite:degraded')
+  })
+
+  test('重写后还在编年代就降级为「不确定」，不把无出处的事实念出去（§5.3）', async () => {
+    const madeUp = '江南贡院是北宋景德三年建的。'
+    registerAdapter(scriptedAdapter([madeUp, '那应该是北宋景德三年吧。']))
+    const userId = await createUser()
+    const journey = await openAndArrive(userId)
+
+    const turn = await onQuestion({
+      journeyId: journey.id, text: '江南贡院什么时候建的', poiId: POI,
+    })
+
+    expect(turn.text).not.toContain('北宋景德三年')
+    expect(turn.text).toMatch(/不确定|不敢|说明牌/)
+    expect(turn.usedElements).toContain('guard:cite:degraded')
+    expect(turn.guardViolations.some((v) => v.startsWith('unsupported_value'))).toBe(true)
+  })
+
+  test('不含 must_cite 字段的回答不受回查影响，一次通过', async () => {
+    registerAdapter(scriptedAdapter(['这地方值得慢慢逛，你先随便看看？']))
+    const userId = await createUser()
+    const journey = await openAndArrive(userId)
+
+    const turn = await onQuestion({
+      journeyId: journey.id, text: '这儿怎么逛', poiId: POI,
+    })
+
+    expect(turn.usedElements).toEqual(['model:qa'])
   })
 })

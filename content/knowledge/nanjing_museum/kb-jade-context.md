@@ -1,7 +1,7 @@
 # 南京博物院2021年年鉴：江都王临时展览
 
 知识ID：kb-jade-context
-场景：museum
+场景：nanjing_museum
 关联锚点：njm_yuyi
 关键词：金缕玉衣、玉衣、江都王、大云山
 

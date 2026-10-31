@@ -1,7 +1,7 @@
 # 南京博物院：历史馆
 
 知识ID：kb-history-hall
-场景：museum
+场景：nanjing_museum
 关联锚点：未记录
 关键词：历史馆、江苏古代文明
 

@@ -1,7 +1,7 @@
 # 南京博物院：民国馆介绍
 
 知识ID：kb-republic-hall
-场景：museum
+场景：nanjing_museum
 关联锚点：未记录
 关键词：民国馆、城市生活、街景
 

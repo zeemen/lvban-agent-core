@@ -150,6 +150,15 @@ const lintKbDocs = async (anchors: ReadonlyMap<string, Anchor>): Promise<readonl
   return docs.flatMap((doc): readonly Finding[] => {
     const gaps = findGaps(doc, known)
     const findings: Finding[] = []
+    if (gaps.includes('scene_mismatch')) {
+      findings.push({
+        anchorId: doc.file,
+        severity: 'error',
+        rule: 'scene/unknown',
+        detail: `场景「${doc.sceneId}」不在锚点用的词表里（${known.scenes.join('、')}）`
+          + '，文件自己躺在哪个目录都对不上',
+      })
+    }
     if (gaps.includes('anchor_placeholder')) {
       findings.push({
         anchorId: doc.file,

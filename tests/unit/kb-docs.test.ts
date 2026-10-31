@@ -142,3 +142,32 @@ describe('关联锚点指不到东西', () => {
     expect(gaps).not.toContain('anchor_missing')
   })
 })
+
+/**
+ * 场景词漂移：6 篇写「场景：museum」，而锚点和目录都叫 nanjing_museum。
+ *
+ * 这个字段目前不进应答路径（检索和 zoneHint 用的都是锚点的 sceneId），
+ * 所以它不会让谁少听一句话——但它是个指向不存在场景的标签，
+ * 等到哪天真有代码按它选库，错就从「标签不准」变成「检索整篇取不到」。
+ */
+describe('场景词对不上', () => {
+  const KNOWN = {
+    scenes: ['fuzimiao', 'nanjing_museum'],
+    anchors: ['fzm_jiangnan_gongyuan_haoshe', 'njm_cuojinyin_hu'],
+  }
+  const withScene = (value: string): KbDoc =>
+    parseKbDoc(REAL.replace('场景：fuzimiao', `场景：${value}`), 'nanjing_museum/x.md')
+
+  test('museum 不在锚点的场景词表里', () => {
+    expect(findGaps(withScene('museum'), KNOWN)).toContain('scene_mismatch')
+  })
+
+  test('nanjing_museum 对得上', () => {
+    expect(findGaps(withScene('nanjing_museum'), KNOWN)).not.toContain('scene_mismatch')
+  })
+
+  test('锚点一个都没加载出来时不报：拿空词表比，只会把 17 篇全判成错', () => {
+    const gaps = findGaps(withScene('museum'), { scenes: [], anchors: [] })
+    expect(gaps).not.toContain('scene_mismatch')
+  })
+})

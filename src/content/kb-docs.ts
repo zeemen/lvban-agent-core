@@ -107,7 +107,13 @@ export const findGaps = (
   if (doc.sourceUrl === '') gaps.push('missing_source')
   if (doc.locator === '' || /待补|待定|TODO|TBD/i.test(doc.locator)) gaps.push('missing_locator')
   if (doc.reviewStatus === '' || /待复核|待审|draft/i.test(doc.reviewStatus)) gaps.push('unreviewed')
-  if (doc.sceneId !== '' && !known.scenes.includes(doc.sceneId)) gaps.push('scene_mismatch')
+  /*
+   * 词表空了就不比。锚点一个都没加载出来时，拿空词表比会把每一篇都判成
+   * 场景词不对——17 条错误里没有一条是真的，只会盖住别的问题。
+   */
+  if (doc.sceneId !== '' && known.scenes.length > 0 && !known.scenes.includes(doc.sceneId)) {
+    gaps.push('scene_mismatch')
+  }
   // 一行里混着好的和占位的也要报，所以这里看的是「有没有」而不是「是不是全是」
   if (doc.anchors.some((id) => !ANCHOR_ID.test(id))) gaps.push('anchor_placeholder')
   if (doc.anchors.some((id) => ANCHOR_ID.test(id) && !known.anchors.includes(id))) {

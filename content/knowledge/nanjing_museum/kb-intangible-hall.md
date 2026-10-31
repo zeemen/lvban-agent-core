@@ -1,7 +1,7 @@
 # 南京博物院：一院六馆与非遗展示
 
 知识ID：kb-intangible-hall
-场景：museum
+场景：nanjing_museum
 关联锚点：未记录
 关键词：非遗馆、非物质文化遗产、传统技艺
 

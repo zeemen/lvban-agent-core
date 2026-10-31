@@ -150,6 +150,22 @@ BM25 是字面匹配，语料里没有的词就搜不到。2026-10-30 实测：�
 reparse 需要 embedding 模型在线（当前配的是本机 Ollama 的
 `qwen3-embedding:0.6b`）。它只重算向量和分块，不删源文件。
 
+一次改多篇时，第 2–3 步照着 `file_hash` 批量对账最省事：它就是文件的 md5，
+`md5 -q <文件>` 和库里一比就知道哪几篇还没传。全部传完后三条都要为真：
+
+```sql
+-- 一、17 篇的 file_hash 与仓库 md5 全一致
+-- 二、活跃分块里没有旧内容
+SELECT count(*) FROM chunks WHERE deleted_at IS NULL AND content ~ '旧的那串';
+-- 三、summary 分块仍是 0
+SELECT chunk_type, count(*) FROM chunks WHERE deleted_at IS NULL GROUP BY 1;
+```
+
+**`deleted_at IS NULL` 这个条件别漏。** reparse 是软删旧分块再写新的，不加这个
+条件会看到旧分块还在、`summary` 还有一条，像是回传失败了——2026-10-31 回传
+14 篇时我就是这么误判了一轮。那条 summary 属于一条 `parse_status=deleting`
+的 kb-haoshe 残留行，早就软删了，不是新生成的。
+
 ## 当前状态，别当成已审校的内容
 
 - **14 篇全是「审核状态：迁移待复核」**，规格 04 M1 要的双签审校一篇没过。

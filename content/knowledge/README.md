@@ -217,9 +217,10 @@ SELECT count(*) FROM chunks c
 
 - **占位从此拦得住。** `lint:content` 现在也查语料：关联锚点不是 `njm_`/`fzm_` 格式
   报**错误**（写错了，改语料），格式对但锚点文件还没建报**警告**（M1 进度，补锚点）。
-  后者现在正好是「有语料在等锚点」的清单，8 条：`fzm_tianxia_wenshu`、
+  后者现在正好是「有语料在等锚点」的清单，7 条：`fzm_tianxia_wenshu`、
   `fzm_dacheng_dian`、`fzm_jiangnan_gongyuan`、`fzm_mingyuan_lou`、`fzm_wende_qiao`、
-  `fzm_wuyi_xiang`、`njm_zhulin_qixian`、`njm_yuyi`。
+  `fzm_wuyi_xiang`、`njm_yuyi`。`njm_zhulin_qixian` 已于 2026-10-31 建起草稿锚点
+  （kb-bamboo 这一篇因此不再报警告），但它是 `draft`、待核 8 条，双签审校未做。
   面板上对应「关联锚点是占位编号」和「锚点还没建」两个标签。
 
   只把这一栏搬进门禁，是因为它会**静默**地少讲：取不到锚点，K1 和八要素就到不了

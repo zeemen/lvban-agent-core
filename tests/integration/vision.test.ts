@@ -244,7 +244,7 @@ describe('无可用 VLM 时的降级 —— 不能在用户按下快门后抛错
 describe('纠正回执同时修落位 —— 规格 02 §4.1 ②「结果允许纠正」', () => {
   const HU = 'njm_cuojinyin_hu'
   /** 规格 04 点了名但锚点还没建 —— 报上来只能被拒 */
-  const NOT_BUILT = 'njm_zhulin_qixian'
+  const NOT_BUILT = 'njm_yuyi'
 
   const anchoredJourney = async (): Promise<{
     journeyId: string; locationEventId: string

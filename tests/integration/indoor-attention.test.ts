@@ -29,7 +29,7 @@ const MUSEUM = 'nanjing_museum'
 const FUZIMIAO = 'fuzimiao'
 const HU = 'njm_cuojinyin_hu'
 /** 规格 04 点了名，但锚点文件还没建 —— 落位时指不到，只能当反例用 */
-const NOT_BUILT = 'njm_zhulin_qixian'
+const NOT_BUILT = 'njm_yuyi'
 /** 夫子庙那个真点位，用来验「场景对不上要拒」和室外路径 */
 const GONGYUAN = 'fzm_jiangnan_gongyuan'
 
@@ -433,8 +433,8 @@ describe('路由接线 —— 规格 02 §8', () => {
  * 校验用的就是应答路径那一个 anchorForPlace：这里认了，那边一定取得到。
  */
 describe('落位前先确认这个 id 指得到东西', () => {
-  /** 规格 04 §4.2 第 1 行点了名，但锚点文件还没建 —— 落位时就是指不到 */
-  const NOT_BUILT = 'njm_zhulin_qixian'
+  /** 规格 04 §4.2 第 3 行点了名（本身还待核定），锚点文件没建 —— 落位时就是指不到 */
+  const NOT_BUILT = 'njm_yuyi'
   /** 真锚点，但它在夫子庙 */
   const OUTDOOR_POI = 'fzm_jiangnan_gongyuan'
 

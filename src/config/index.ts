@@ -70,6 +70,12 @@ export const vision = {
   tauLow: 0.45,
   hitRateWindow: 200,
   hitRateThreshold: 0.8,
+  /**
+   * 识别落位的有效期（§4.2）。拍完就问、再追问一两句都在窗口内；
+   * 过了就当不知道，而不是继续声称人还站在那件展品前面。
+   * 规格没给数，先取 5 分钟，现场实测后调。
+   */
+  attentionTtlSec: 300,
 } as const
 
 /** 规格 01 §5.1：行中检索预算 */

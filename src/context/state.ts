@@ -5,6 +5,7 @@ import type { AgeBand } from '../domain/enums.js'
 import { readIgnored, readLastSpoke, cacheContext } from '../memory/ephemeral.js'
 import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
+import { readIndoorAttention } from './attention.js'
 import { deriveActivity, deriveFatigue, deriveInterest } from './proactivity.js'
 import { resolveLocationProvenance } from './provenance.js'
 
@@ -102,17 +103,31 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
   )
   const ageBand = userRows[0]?.age_band ?? 'unknown'
 
-  const poiId = input.poiId ?? null
+  const scene = INDOOR_SCENES.has(journey.scene_id) ? 'indoor' : 'outdoor'
+
+  /*
+   * 室内：客户端没自报来源时，用这趟旅程已经落位的注意力
+   * （规格 02 §4.2，判定在 context/attention.ts）。
+   * 拍一张之后接着问「这个多大」，不必把来源和分数再带一遍。
+   * 自报了就以自报为准——那是当下的动作，比落位的历史新。
+   */
+  const stored = scene === 'indoor' && input.locationSource === undefined
+    ? await readIndoorAttention(input.journeyId, now)
+    : null
+
+  const poiId = input.poiId ?? stored?.placeId ?? null
+  // 客户端指的是另一件时，落位的置信度不能套到它头上
+  const anchored = stored !== null && stored.placeId === poiId ? stored : null
+
   const counts = await loadCounts(input.journeyId, poiId, now)
   const elapsedMin = Math.max(0, Math.round((now.getTime() - journey.started_at.getTime()) / 60_000))
 
-  const scene = INDOOR_SCENES.has(journey.scene_id) ? 'indoor' : 'outdoor'
   // 室内不伪造精确位置（规格 02 §30）。判定全在 provenance.ts，这里只取结果
   const place = resolveLocationProvenance({
     poiId,
     scene,
-    declaredSource: input.locationSource,
-    declaredConfidence: input.locationConfidence,
+    declaredSource: input.locationSource ?? anchored?.source,
+    declaredConfidence: input.locationConfidence ?? anchored?.confidence,
   })
   const memory = await getMemoryHooks({
     userId: journey.user_id,

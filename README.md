@@ -73,7 +73,7 @@ node --run coverage
 |---|---|
 | 系统推断不进长期记忆 | `src/memory/gateway.ts` 的 source 分流；`preference.source` 枚举在 schema 层就不含 `system_inferred` |
 | 没有 open 的 Journey 就没有采集 | `gateway.ts` 的 journey 校验 + `context/journey.ts` 状态机 |
-| 室内不伪造精确位置 | `location_event.source` 约束 + `src/vision/anchor.ts` 的候选集约束识别 |
+| 室内不伪造精确位置 | `location_event.source` 约束 + `src/vision/anchor.ts` 的候选集约束识别；`context/provenance.ts` 判定来源与置信度（室内只认游客的动作，不报就是「不知道」），`context/attention.ts` 负责落位与撤回 |
 | 商户不进讲解 | `planner/decide.ts` 的 `PlanInput` 里结构上没有商户字段 |
 
 对应的测试在 `tests/integration/gateway.test.ts`，包括「绕过网关直接写库也会被数据库约束拦住」。

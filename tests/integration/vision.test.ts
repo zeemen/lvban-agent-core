@@ -1,11 +1,14 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import Fastify, { type FastifyInstance } from 'fastify'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { startJourney } from '../../src/context/journey.js'
 import { redis } from '../../src/db/redis.js'
+import { registerRoutes } from '../../src/http/routes.js'
 import { registerAdapter, visionAvailability } from '../../src/models/router.js'
 import type { ModelAdapter } from '../../src/models/types.js'
 import {
   decideVisionAnchor, recordVisionOutcome, visionHitRate,
 } from '../../src/vision/anchor.js'
-import { teardown } from '../helpers/db.js'
+import { createUser, pool, teardown } from '../helpers/db.js'
 
 /**
  * 视觉锚点与命中率熔断 —— 规格 02 §4。
@@ -13,7 +16,24 @@ import { teardown } from '../helpers/db.js'
  * 这里验证它是运行时开关，而不是一次性的开发期决策。
  */
 
-afterAll(teardown)
+/*
+ * 命中率窗口 vision:outcomes 是一个全局键，Redis 不随测试文件隔离，
+ * 所以凡是会写这个键的用例都放在本文件里——换句话说，调
+ * /v1/vision/anchor/outcome 的用例不要散到别处去（§4.3 是本文件的题）。
+ */
+
+let app: FastifyInstance
+
+beforeAll(async () => {
+  app = Fastify()
+  registerRoutes(app)
+  await app.ready()
+})
+
+afterAll(async () => {
+  await app.close()
+  await teardown()
+})
 
 const CANDIDATES = [
   { exhibitId: 'njm_cuojinyin_hu', name: '错金银重络铜壶' },
@@ -214,5 +234,111 @@ describe('无可用 VLM 时的降级 —— 不能在用户按下快门后抛错
 
     expect(result.decision).toBe('fallback_ask')
     expect(result.fallbackReason).toContain('MODEL_ID_VISION')
+  })
+})
+
+describe('纠正回执同时修落位 —— 规格 02 §4.1 ②「结果允许纠正」', () => {
+  const HU = 'njm_cuojinyin_hu'
+  const ZHUANHUA = 'njm_zhulin_qixian'
+
+  const anchoredJourney = async (): Promise<{
+    journeyId: string; locationEventId: string
+  }> => {
+    withConfidence(0.9)
+    const userId = await createUser()
+    const journey = await startJourney({
+      userId, mode: 'light_guide', party: 'solo',
+      sceneId: 'nanjing_museum', trackConsent: 'visited_points_only',
+    })
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor',
+      payload: { imageKey: 'oc', journeyId: journey.id, zoneHint: 'nanjing_museum' },
+    })
+    const { locationEventId } = JSON.parse(res.payload) as { locationEventId: string }
+    return { journeyId: journey.id, locationEventId }
+  }
+
+  const eventsOf = async (journeyId: string): Promise<readonly {
+    source: string; exhibit_id: string | null
+  }[]> => {
+    const { rows } = await pool.query<{ source: string; exhibit_id: string | null }>(
+      `SELECT source, exhibit_id FROM location_event
+        WHERE journey_id = $1 ORDER BY occurred_at, id`,
+      [journeyId],
+    )
+    return rows
+  }
+
+  test('纠正时撤回认错的那条，并落上游客选的那件', async () => {
+    const { journeyId, locationEventId } = await anchoredJourney()
+    expect((await eventsOf(journeyId))[0]?.exhibit_id).toBe(HU)
+
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor/outcome',
+      payload: { corrected: true, journeyId, locationEventId, exhibitId: ZHUANHUA },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const events = await eventsOf(journeyId)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.source).toBe('user_confirmed')
+    expect(events[0]?.exhibit_id).toBe(ZHUANHUA)
+  })
+
+  test('没纠正时落位留着不动，只记一条命中率样本', async () => {
+    const { journeyId, locationEventId } = await anchoredJourney()
+
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor/outcome',
+      payload: { corrected: false, journeyId, locationEventId },
+    })
+
+    expect((JSON.parse(res.payload) as { samples: number }).samples).toBe(1)
+    const events = await eventsOf(journeyId)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.source).toBe('vision_anchor')
+  })
+
+  test('只报命中率、不带旅程的用法仍然可用：熔断统计不该因为缺旅程就记不上', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor/outcome',
+      payload: { corrected: true },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect((JSON.parse(res.payload) as { samples: number }).samples).toBe(1)
+  })
+})
+
+describe('点选落位 —— ask_user_pick 之后从候选里选一件（§4.1 ②）', () => {
+  test('点选与 corrected 无关：系统本来没敢认，这不叫纠正，但一样要落位', async () => {
+    withConfidence(0.6)
+    const userId = await createUser()
+    const journey = await startJourney({
+      userId, mode: 'light_guide', party: 'solo',
+      sceneId: 'nanjing_museum', trackConsent: 'visited_points_only',
+    })
+    const anchored = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor',
+      payload: { imageKey: 'pick', journeyId: journey.id, zoneHint: 'nanjing_museum' },
+    })
+    const body = JSON.parse(anchored.payload) as {
+      decision: string; locationEventId: string | null
+    }
+    expect(body.decision).toBe('ask_user_pick')
+    expect(body.locationEventId).toBeNull()
+
+    await app.inject({
+      method: 'POST', url: '/v1/vision/anchor/outcome',
+      payload: { corrected: false, journeyId: journey.id, exhibitId: 'njm_zhulin_qixian' },
+    })
+
+    const { rows } = await pool.query<{ source: string; exhibit_id: string | null }>(
+      'SELECT source, exhibit_id FROM location_event WHERE journey_id = $1',
+      [journey.id],
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.source).toBe('user_confirmed')
+    expect(rows[0]?.exhibit_id).toBe('njm_zhulin_qixian')
   })
 })

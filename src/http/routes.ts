@@ -36,6 +36,9 @@ import { classifyError } from './errors.js'
 import { checkDependencies } from './health.js'
 import { ttsAvailability } from '../tts/availability.js'
 import { decideVisionAnchor, recordVisionOutcome, visionHitRate } from '../vision/anchor.js'
+import {
+  recordUserPick, recordVisionAnchor, retractVisionAnchor,
+} from '../context/attention.js'
 
 /** HTTP 接口 —— 规格 02 §8、01 §5.5、01 §7。M3 小程序接的就是这一套。 */
 
@@ -272,21 +275,81 @@ export const registerRoutes = (app: FastifyInstance): void => {
     return reply
   })
 
+  /**
+   * 拍照辅助识别（规格 02 §4.2）。
+   *
+   * journeyId 是必填的：链路最后一步要写 location_event，而没有 open 的
+   * 旅程就没有任何采集（红线 2）。识别准到可以直接采纳时顺手落位，
+   * 并把事件 id 交回去——游客说「不对」时要凭它撤回那一条。
+   */
   app.post('/v1/vision/anchor', async (request) => {
-    const { imageKey, zoneHint } = z.object({
-      imageKey: z.string(), zoneHint: z.string().optional(),
+    const { imageKey, zoneHint, journeyId } = z.object({
+      imageKey: z.string(),
+      zoneHint: z.string().optional(),
+      journeyId: z.string().uuid(),
     }).parse(request.body)
+    await requireJourneyOwner(request, journeyId)
+
     const anchors = await loadAnchors()
     const candidates = [...anchors.values()]
       .filter((a) => a.exhibitId !== undefined)
       .filter((a) => zoneHint === undefined || a.sceneId === zoneHint)
       .map((a) => ({ exhibitId: a.exhibitId as string, name: a.name }))
-    return decideVisionAnchor({ imageKey, candidates })
+
+    const result = await decideVisionAnchor({ imageKey, candidates })
+
+    // 候选还没收敛到一件就落位，等于替游客做了决定
+    const top = result.decision === 'auto_accept' ? result.candidates[0] : undefined
+    if (top === undefined) return { ...result, locationEventId: null }
+
+    const journey = await repo.findJourney(journeyId)
+    if (journey === null) throw new AuthError(404, '旅程不存在')
+    const locationEventId = await recordVisionAnchor({
+      journeyId,
+      userId: journey.user_id,
+      exhibitId: top.exhibitId,
+      confidence: top.confidence,
+    })
+    return { ...result, locationEventId }
   })
 
+  /**
+   * 识别结果的回执（规格 02 §4.3）。命中率 = 1 − 用户纠正率，这是唯一真实来源。
+   *
+   * 带上旅程时同时修落位：纠正要撤回认错的那一条，否则语义足迹里会留下
+   * 一件其实没看过的展品（§4.4）；游客点的那件以 user_confirmed 落上。
+   * 只报命中率的用法仍然可用——熔断统计不该因为缺旅程就记不上。
+   */
   app.post('/v1/vision/anchor/outcome', async (request) => {
-    const body = z.object({ corrected: z.boolean() }).parse(request.body)
+    const body = z.object({
+      corrected: z.boolean(),
+      journeyId: z.string().uuid().optional(),
+      locationEventId: z.string().uuid().optional(),
+      exhibitId: z.string().optional(),
+    }).parse(request.body)
     await recordVisionOutcome(body.corrected)
+
+    if (body.journeyId !== undefined) {
+      await requireJourneyOwner(request, body.journeyId)
+      const journey = await repo.findJourney(body.journeyId)
+      if (journey === null) throw new AuthError(404, '旅程不存在')
+      // 只撤游客明说认错了的那一条
+      if (body.corrected && body.locationEventId !== undefined) {
+        await retractVisionAnchor({
+          journeyId: body.journeyId, locationEventId: body.locationEventId,
+        })
+      }
+      /*
+       * 点选与 corrected 无关：ask_user_pick 之后从候选里点一件，
+       * 既不是「纠正」（系统本来就没敢认），也一样要落位。
+       */
+      if (body.exhibitId !== undefined) {
+        await recordUserPick({
+          journeyId: body.journeyId, userId: journey.user_id, exhibitId: body.exhibitId,
+        })
+      }
+    }
+
     return visionHitRate()
   })
 

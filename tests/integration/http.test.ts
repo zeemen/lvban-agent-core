@@ -302,10 +302,21 @@ describe('流式应答接口（SSE）', () => {
 })
 
 describe('视觉接口', () => {
+  // 识别链路最后一步要写 location_event，所以得有旅程（规格 02 §4.2、红线 2）
   test('识别接口按候选集约束返回决策', async () => {
+    const userId = await createUser()
+    const started = await app.inject({
+      method: 'POST', url: '/v1/journeys',
+      payload: {
+        userId, mode: 'light_guide', party: 'solo',
+        sceneId: 'nanjing_museum', trackConsent: 'visited_points_only',
+      },
+    })
+    const { journeyId } = json<{ journeyId: string }>(started.payload)
+
     const res = await app.inject({
       method: 'POST', url: '/v1/vision/anchor',
-      payload: { imageKey: 'test-key', zoneHint: 'nanjing_museum' },
+      payload: { imageKey: 'test-key', zoneHint: 'nanjing_museum', journeyId },
     })
 
     expect(res.statusCode).toBe(200)

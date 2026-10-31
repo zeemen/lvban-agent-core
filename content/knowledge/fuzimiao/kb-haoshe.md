@@ -3,7 +3,7 @@
 知识ID：kb-haoshe
 场景：fuzimiao
 关联锚点：fzm_jiangnan_gongyuan_haoshe
-关键词：号舍、乡试、尺寸、木板、搜检、九天七夜
+关键词：号舍、乡试、尺寸、木板、搜检、九天七夜、考试、考场、吃住、睡觉、带东西
 
 ## 来源与核对
 

@@ -168,7 +168,9 @@ SELECT chunk_type, count(*) FROM chunks WHERE deleted_at IS NULL GROUP BY 1;
 
 ## 当前状态，别当成已审校的内容
 
-- **14 篇全是「审核状态：迁移待复核」**，规格 04 M1 要的双签审校一篇没过。
+- **17 篇的双签审校一篇都没过**（规格 04 M1 的门槛）：14 篇是迁移那批的
+  「迁移待复核」，后补的 3 篇（kb-haoshe、kb-gongyuan-scale、kb-cuojinyin-hu）
+  写的是「新建待审校」。两种措辞不同，状态一样——都没人签。
 - **3 篇缺原文定位**：kb-bamboo、kb-gongyuan、kb-mingyuan 写的是
   「待补充原文定位」。它们是 10-25 那批；10-27 那批 11 篇都精确到段或印刷页码。
 - **2 篇来源打不开、无法复核**：kb-wuyi（njqh.gov.cn 证书不被信任）、

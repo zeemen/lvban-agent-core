@@ -66,14 +66,17 @@ const weknoraIndex = async (): Promise<ReadonlyMap<string, string>> => {
 
 export const buildDocRows = async (): Promise<readonly DocRow[]> => {
   const [docs, anchors, wk] = await Promise.all([loadKbDocs(), loadAnchors(), weknoraIndex()])
-  const scenes = [...new Set([...anchors.values()].map((a) => a.sceneId))]
+  const known = {
+    scenes: [...new Set([...anchors.values()].map((a) => a.sceneId))],
+    anchors: [...anchors.keys()],
+  }
 
   return docs.map((doc): DocRow => {
     const base = doc.file.split('/').pop() ?? doc.file
     const status = wk.get(base)
     return {
       ...doc,
-      gaps: findGaps(doc, scenes),
+      gaps: findGaps(doc, known),
       weknora: status === undefined ? null : { parseStatus: status, chunks: 0 },
     }
   })

@@ -2,7 +2,7 @@
 
 知识ID：kb-intangible-hall
 场景：museum
-关联锚点：museum-16
+关联锚点：未记录
 关键词：非遗馆、非物质文化遗产、传统技艺
 
 ## 来源与核对

@@ -157,11 +157,43 @@ reparse 需要 embedding 模型在线（当前配的是本机 Ollama 的
   「待补充原文定位」。它们是 10-25 那批；10-27 那批 11 篇都精确到段或印刷页码。
 - **2 篇来源打不开、无法复核**：kb-wuyi（njqh.gov.cn 证书不被信任）、
   kb-history-hall / kb-republic-hall（南博 SPA，curl 只拿到空壳）。
-- **`关联锚点` 这一栏目前指不到任何东西。** 14 篇写的是 `fuzimiao-3`、`museum-1` 这类编号，
-  而真实 anchorId 是 `fzm_jiangnan_gongyuan_haoshe`、`njm_cuojinyin_hu`。这套编号在
-  specs/、src/、content/anchors/ 里都找不到，是一套只存在于语料里的占位。纠错队列要回答
-  「这条知识背的是哪个锚点」，得先把它对上。kb-haoshe 用的是真实 anchorId，故意和另外
-  14 篇不一致——跟一套指不到东西的编号保持一致没有意义。
+- **`关联锚点` 已按规格 04 §4 对上正式 id**（2026-10-31）。原先 14 篇写的
+  `fuzimiao-3`、`museum-1` 不是随手编的，是**规格 04 §4.2／§4.4 锚点表的行号**——
+  但行号只存在于语料里，应答路径按它取不到锚点，面板上这一篇却看着是填好了的。
+  现在改成规格点名的 id，还没点名的写「未记录」：
+
+  | 语料 | 原编号 | 现在 |
+  |---|---|---|
+  | kb-wenshu | fuzimiao-1 | `fzm_tianxia_wenshu`（关键词与摘要都是「天下文枢」坊） |
+  | kb-dacheng | fuzimiao-2 | `fzm_dacheng_dian` |
+  | kb-gongyuan | fuzimiao-3、4 | `fzm_jiangnan_gongyuan`、`fzm_mingyuan_lou` |
+  | kb-mingyuan | fuzimiao-4 | `fzm_mingyuan_lou` |
+  | kb-wende | fuzimiao-5 | `fzm_wende_qiao` |
+  | kb-wuyi | fuzimiao-6 | `fzm_wuyi_xiang` |
+  | kb-bamboo | museum-1 | `njm_zhulin_qixian` |
+  | kb-jade-context | museum-3 | `njm_yuyi`（该锚点规格里标**待核定**，金缕／银缕须查藏品库） |
+  | kb-panchi | fuzimiao-7、8、9 | 未记录 —— 夫子庙第 7–12 号规格里是「待定」 |
+  | kb-taoye | fuzimiao-11 | 未记录 —— 同上 |
+  | kb-history-hall | museum-4 | 未记录 —— 南博第 4–18 号规格里是「待定」 |
+  | kb-republic-hall | museum-15 | 未记录 —— 同上 |
+  | kb-intangible-hall | museum-16 | 未记录 —— 同上 |
+  | kb-digital-hall | museum-17 | 未记录 —— 同上 |
+
+  四篇展馆概述（历史馆／民国馆／非遗／数字馆）严格说不该挂 Top30 锚点，它们讲的是
+  展馆而不是展品；规格 02 §4.2 的 `zone_hint` 用的是 `njm_history_hall` 这种展区 id，
+  那是另一套。等展区 id 有正式清单了再挂，现在写展区 id 只是把一个指不到的引用
+  换成另一个。
+
+- **占位从此拦得住。** `lint:content` 现在也查语料：关联锚点不是 `njm_`/`fzm_` 格式
+  报**错误**（写错了，改语料），格式对但锚点文件还没建报**警告**（M1 进度，补锚点）。
+  后者现在正好是「有语料在等锚点」的清单，8 条：`fzm_tianxia_wenshu`、
+  `fzm_dacheng_dian`、`fzm_jiangnan_gongyuan`、`fzm_mingyuan_lou`、`fzm_wende_qiao`、
+  `fzm_wuyi_xiang`、`njm_zhulin_qixian`、`njm_yuyi`。
+  面板上对应「关联锚点是占位编号」和「锚点还没建」两个标签。
+
+  只把这一栏搬进门禁，是因为它会**静默**地少讲：取不到锚点，K1 和八要素就到不了
+  用户，而面板和文件本身都看不出异常。缺原文定位、待双签这些是待办清单，面板上看
+  就够了，搬进门禁只会让十几条警告盖住真正该拦的那一条。
 - 文档里的 `场景：museum` 和锚点的 `sceneId: nanjing_museum` 对不上。
   目前没有代码读文档里这个字段（检索按锚点的 sceneId 选库），所以不影响运行，
   但两套词表迟早要统一。这次搬运按字节原样搬，没有顺手改它。

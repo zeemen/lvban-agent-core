@@ -29,7 +29,7 @@ describe('生成的草稿，解析器要能原样读回来', () => {
     title: '南京中国科举博物馆：江南贡院号舍',
     knowledgeId: 'kb-haoshe',
     sceneId: 'fuzimiao',
-    anchors: 'fuzimiao-1、fuzimiao-2',
+    anchors: 'fzm_tianxia_wenshu、fzm_dacheng_dian',
     keywords: '号舍、乡试、尺寸、木板、搜检',
     sourceUrl: 'https://en.njiemuseum.com/xuetang_1/6.html',
     locator: '文内号舍形制与三场九天段',
@@ -50,7 +50,7 @@ describe('生成的草稿，解析器要能原样读回来', () => {
       checkedAt: input.checkedAt,
       reviewStatus: input.reviewStatus,
     })
-    expect(doc.anchors).toEqual(['fuzimiao-1', 'fuzimiao-2'])
+    expect(doc.anchors).toEqual(['fzm_tianxia_wenshu', 'fzm_dacheng_dian'])
     expect(doc.keywords).toEqual(['号舍', '乡试', '尺寸', '木板', '搜检'])
     expect(doc.summary).toBe(input.summary)
   })

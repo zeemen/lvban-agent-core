@@ -2,7 +2,7 @@
 
 知识ID：kb-republic-hall
 场景：museum
-关联锚点：museum-15
+关联锚点：未记录
 关键词：民国馆、城市生活、街景
 
 ## 来源与核对

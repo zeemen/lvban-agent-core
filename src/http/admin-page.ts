@@ -83,7 +83,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px s
       <div><label>标题（用页面自己的题名，别把主办单位顶在前面）</label><input id="f_title"></div>
       <div><label>知识ID</label><input id="f_id" placeholder="kb-haoshe"></div>
       <div><label>场景</label><input id="f_scene" placeholder="fuzimiao"></div>
-      <div><label>关联锚点</label><input id="f_anchors" placeholder="fuzimiao-1、fuzimiao-2"></div>
+      <div><label>关联锚点</label><input id="f_anchors" placeholder="fzm_mingyuan_lou（没有就填 未记录）"></div>
       <div><label>关键词</label><input id="f_kw" placeholder="号舍、乡试、尺寸"></div>
       <div><label>原文定位</label><input id="f_loc" placeholder="文内号舍段"></div>
       <div><label>核对日期</label><input id="f_checked"></div>
@@ -100,6 +100,7 @@ const GAP = {
   missing_source:['缺来源','t-bad'], missing_locator:['缺原文定位','t-warn'],
   unreviewed:['待复核','t-warn'], scene_mismatch:['场景词对不上锚点','t-bad'],
   stale_check:['核对日期过旧','t-dim'],
+  anchor_placeholder:['关联锚点是占位编号','t-bad'], anchor_missing:['锚点还没建','t-warn'],
 };
 const esc = s => String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function show(n){for(const i of [1,2]){document.getElementById('p'+i).hidden=(i!==n);

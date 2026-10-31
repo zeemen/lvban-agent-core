@@ -2,7 +2,7 @@
 
 知识ID：kb-bamboo
 场景：museum
-关联锚点：museum-1
+关联锚点：njm_zhulin_qixian
 关键词：竹林七贤、荣启期、砖印壁画、南朝、年代
 
 ## 来源与核对

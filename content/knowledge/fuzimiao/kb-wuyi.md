@@ -2,7 +2,7 @@
 
 知识ID：kb-wuyi
 场景：fuzimiao
-关联锚点：fuzimiao-6
+关联锚点：fzm_wuyi_xiang
 关键词：乌衣巷、王导、谢安、王谢
 
 ## 来源与核对

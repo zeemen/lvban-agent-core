@@ -2,7 +2,7 @@
 
 知识ID：kb-dacheng
 场景：fuzimiao
-关联锚点：fuzimiao-2
+关联锚点：fzm_dacheng_dian
 关键词：大成殿、孔子、主殿
 
 ## 来源与核对

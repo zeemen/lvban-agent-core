@@ -2,7 +2,7 @@
 
 知识ID：kb-digital-hall
 场景：museum
-关联锚点：museum-17
+关联锚点：未记录
 关键词：数字馆、数字多媒体
 
 ## 来源与核对

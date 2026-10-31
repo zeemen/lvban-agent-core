@@ -2,7 +2,7 @@
 
 知识ID：kb-panchi
 场景：fuzimiao
-关联锚点：fuzimiao-7、fuzimiao-8、fuzimiao-9
+关联锚点：未记录
 关键词：泮池、秦淮河、照壁
 
 ## 来源与核对

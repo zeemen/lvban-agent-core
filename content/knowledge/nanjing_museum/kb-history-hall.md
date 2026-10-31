@@ -2,7 +2,7 @@
 
 知识ID：kb-history-hall
 场景：museum
-关联锚点：museum-4
+关联锚点：未记录
 关键词：历史馆、江苏古代文明
 
 ## 来源与核对

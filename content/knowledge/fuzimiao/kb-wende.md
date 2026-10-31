@@ -2,7 +2,7 @@
 
 知识ID：kb-wende
 场景：fuzimiao
-关联锚点：fuzimiao-5
+关联锚点：fzm_wende_qiao
 关键词：文德桥、半边月、文德分月、月亮、半个月亮
 
 ## 来源与核对

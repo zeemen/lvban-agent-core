@@ -36,6 +36,10 @@ export type KbGap =
   | 'unreviewed'
   | 'scene_mismatch'
   | 'stale_check'
+  /** 关联锚点写的不是规格 04 §4.1 的 id 格式，连指的是什么都看不出来 */
+  | 'anchor_placeholder'
+  /** 格式对，但那个锚点还没建 —— 是 M1 的进度，不是写错了 */
+  | 'anchor_missing'
 
 /** 「键：值」取值；中英文冒号都认，手写内容里两种都出现过 */
 const field = (text: string, key: string): string => {
@@ -70,24 +74,45 @@ export const parseKbDoc = (text: string, file: string): KbDoc => {
 /** 核对日期超过这个天数就提醒重核一遍。来源页会改，链接会烂 */
 const STALE_DAYS = 180
 
+/** 锚点 ID 编号规则（规格 04 §4.1）：njm_<slug> 南博、fzm_<slug> 夫子庙 */
+const ANCHOR_ID = /^(njm|fzm)_[a-z0-9_]+$/
+
 const daysSince = (iso: string, now: Date): number | null => {
   const t = Date.parse(iso)
   return Number.isNaN(t) ? null : Math.floor((now.getTime() - t) / 86_400_000)
 }
 
+/** 锚点侧实际有的词表。两边摆在一起比，才看得见语料指向了不存在的东西 */
+export type KnownVocabulary = {
+  /** 锚点里实际用的场景词 */
+  readonly scenes: readonly string[]
+  /** 已经建好锚点文件的 anchorId */
+  readonly anchors: readonly string[]
+}
+
 /**
- * 这一篇缺什么。knownScenes 传锚点里实际用的场景词表——
- * 文档写「场景：museum」而锚点写 nanjing_museum，这种漂移没人会主动发现，
- * 只有把两边摆在一起比才看得见。
+ * 这一篇缺什么。
+ *
+ * 场景词和关联锚点这两类缺陷都只能靠对照锚点侧才发现：文档写「场景：museum」
+ * 而锚点写 nanjing_museum、关联锚点写 fuzimiao-3 而锚点叫 fzm_mingyuan_lou，
+ * 单看语料文件本身都像是填好了的。
+ *
+ * 关联锚点分两档，因为该做的事不一样：格式不对是写错了，改语料；
+ * 格式对但锚点没建是 M1 的进度，补锚点。混成一条就分不清该找谁。
  */
 export const findGaps = (
-  doc: KbDoc, knownScenes: readonly string[], now: Date = new Date(),
+  doc: KbDoc, known: KnownVocabulary, now: Date = new Date(),
 ): readonly KbGap[] => {
   const gaps: KbGap[] = []
   if (doc.sourceUrl === '') gaps.push('missing_source')
   if (doc.locator === '' || /待补|待定|TODO|TBD/i.test(doc.locator)) gaps.push('missing_locator')
   if (doc.reviewStatus === '' || /待复核|待审|draft/i.test(doc.reviewStatus)) gaps.push('unreviewed')
-  if (doc.sceneId !== '' && !knownScenes.includes(doc.sceneId)) gaps.push('scene_mismatch')
+  if (doc.sceneId !== '' && !known.scenes.includes(doc.sceneId)) gaps.push('scene_mismatch')
+  // 一行里混着好的和占位的也要报，所以这里看的是「有没有」而不是「是不是全是」
+  if (doc.anchors.some((id) => !ANCHOR_ID.test(id))) gaps.push('anchor_placeholder')
+  if (doc.anchors.some((id) => ANCHOR_ID.test(id) && !known.anchors.includes(id))) {
+    gaps.push('anchor_missing')
+  }
   const age = daysSince(doc.checkedAt, now)
   if (age !== null && age > STALE_DAYS) gaps.push('stale_check')
   return gaps

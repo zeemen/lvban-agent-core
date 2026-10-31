@@ -3,6 +3,7 @@ import { closeRedis } from '../db/redis.js'
 import type { PlanDecision } from '../planner/decide.js'
 import { checkRegister, hasHedgeMarker } from '../planner/register-guard.js'
 import { renderFromAnchor } from '../planner/render.js'
+import { findGaps, loadKbDocs } from './kb-docs.js'
 import { loadAnchors, type Anchor } from './loader.js'
 
 /**
@@ -131,14 +132,55 @@ const lintAnchor = (anchor: Anchor): readonly Finding[] => {
   return findings
 }
 
+/**
+ * K3 语料侧只查关联锚点这一栏，不把面板上的缺口全搬过来。
+ *
+ * 分界线是「会不会静默地少讲」：关联锚点指不到东西，应答路径就取不到锚点，
+ * K1 和八要素到不了用户，而面板上这一篇看着是填好了的——必须拦。
+ * 缺原文定位、待双签这些是内容负责人的待办清单，面板上看就够了，
+ * 搬进门禁只会让 17 条警告盖住真正该拦的那一条。
+ */
+const lintKbDocs = async (anchors: ReadonlyMap<string, Anchor>): Promise<readonly Finding[]> => {
+  const docs = await loadKbDocs()
+  const known = {
+    scenes: [...new Set([...anchors.values()].map((a) => a.sceneId))],
+    anchors: [...anchors.keys()],
+  }
+
+  return docs.flatMap((doc): readonly Finding[] => {
+    const gaps = findGaps(doc, known)
+    const findings: Finding[] = []
+    if (gaps.includes('anchor_placeholder')) {
+      findings.push({
+        anchorId: doc.file,
+        severity: 'error',
+        rule: 'anchor/placeholder',
+        detail: `关联锚点「${doc.anchors.join('、')}」不是 njm_/fzm_ 格式的 id`
+          + '（规格 04 §4.1），应答路径按它取不到锚点',
+      })
+    }
+    if (gaps.includes('anchor_missing')) {
+      findings.push({
+        anchorId: doc.file,
+        severity: 'warn',
+        rule: 'anchor/not_built',
+        detail: `关联锚点 ${doc.anchors.filter((a) => !known.anchors.includes(a)).join('、')}`
+          + ' 还没有锚点文件（M1 门槛 30 个，现有 ' + String(anchors.size) + ' 个）',
+      })
+    }
+    return findings
+  })
+}
+
 const run = async (): Promise<void> => {
   const anchors = await loadAnchors()
-  const findings = [...anchors.values()].flatMap(lintAnchor)
+  const docs = await loadKbDocs()
+  const findings = [...[...anchors.values()].flatMap(lintAnchor), ...await lintKbDocs(anchors)]
 
   const errors = findings.filter((f) => f.severity === 'error')
   const warns = findings.filter((f) => f.severity === 'warn')
 
-  console.log(`[lint:content] 检查 ${anchors.size} 个锚点`)
+  console.log(`[lint:content] 检查 ${anchors.size} 个锚点、${docs.length} 篇语料`)
   for (const f of findings) {
     const mark = f.severity === 'error' ? '✗' : '!'
     console.log(`  ${mark} [${f.rule}] ${f.anchorId}：${f.detail}`)
@@ -146,7 +188,10 @@ const run = async (): Promise<void> => {
   console.log(`\n[lint:content] ${errors.length} 个错误，${warns.length} 个警告`)
 
   if (errors.length > 0) {
-    console.log('\n错误必须修复后方可上线：口吻问题改文案，缺 K1 来源补资料源。')
+    console.log(
+      '\n错误必须修复后方可上线：口吻问题改文案，缺 K1 来源补资料源，'
+      + '关联锚点占位按规格 04 §4.1 改成正式 id。',
+    )
     process.exitCode = 1
   }
 }

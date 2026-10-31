@@ -2,7 +2,7 @@
 
 知识ID：kb-mingyuan
 场景：fuzimiao
-关联锚点：fuzimiao-4
+关联锚点：fzm_mingyuan_lou
 关键词：明远楼、建筑、中轴线、始建、年代
 
 ## 来源与核对

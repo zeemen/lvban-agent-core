@@ -2,7 +2,7 @@
 
 知识ID：kb-wenshu
 场景：fuzimiao
-关联锚点：fuzimiao-1
+关联锚点：fzm_tianxia_wenshu
 关键词：天下文枢、牌坊
 
 ## 来源与核对

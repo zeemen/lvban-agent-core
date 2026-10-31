@@ -2,7 +2,7 @@
 
 知识ID：kb-gongyuan
 场景：fuzimiao
-关联锚点：fuzimiao-3、fuzimiao-4
+关联锚点：fzm_jiangnan_gongyuan、fzm_mingyuan_lou
 关键词：江南贡院、明远楼、科举、始建、年代
 
 ## 来源与核对

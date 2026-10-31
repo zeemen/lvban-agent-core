@@ -61,9 +61,16 @@ export const classifyError = (error: unknown): Classified => {
   // 自家错误（鉴权、微信登录、配置缺失）自带状态码，message 是写给调用方看的
   const own = httpStatusOf(error)
   if (own !== undefined) {
-    // 503 才是「依赖不可用」；500 是我们自己的问题（例如配置填错），
-    // 贴成 dependency_unavailable 会把排查方向指向外部系统
-    const label = own === 503 ? 'dependency_unavailable' : own >= 500 ? 'internal_error' : 'error'
+    /*
+     * 503 才是「依赖不可用」；500 是我们自己的问题（例如配置填错），
+     * 贴成 dependency_unavailable 会把排查方向指向外部系统。
+     * 400 和 zod 校验失败、图片读不到是同一类——负载写错了，统一标 bad_request，
+     * 不然同样是「客户端传错了」，三条路由回三种标签。
+     * 其余 4xx（401/403/404）是身份或资源问题，不是负载写错。
+     */
+    const label = own === 503 ? 'dependency_unavailable'
+      : own >= 500 ? 'internal_error'
+        : own === 400 ? 'bad_request' : 'error'
     return { status: own, body: { error: label, message: (error as Error).message } }
   }
 

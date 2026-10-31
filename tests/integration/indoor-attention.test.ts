@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
   readIndoorAttention, recordUserPick, recordVisionAnchor, retractVisionAnchor,
+  type AttentionResult,
 } from '../../src/context/attention.js'
 import { startJourney } from '../../src/context/journey.js'
 import { buildContextState } from '../../src/context/state.js'
@@ -25,8 +26,12 @@ import { createUser, pool, teardown } from '../helpers/db.js'
 let app: FastifyInstance
 
 const MUSEUM = 'nanjing_museum'
+const FUZIMIAO = 'fuzimiao'
 const HU = 'njm_cuojinyin_hu'
-const ZHUANHUA = 'njm_zhulin_qixian'
+/** 规格 04 点了名，但锚点文件还没建 —— 落位时指不到，只能当反例用 */
+const NOT_BUILT = 'njm_zhulin_qixian'
+/** 夫子庙那个真点位，用来验「场景对不上要拒」和室外路径 */
+const GONGYUAN = 'fzm_jiangnan_gongyuan'
 
 /** 覆盖同名 mock 适配器，控制 VLM 的 top-1 分数 */
 const withConfidence = (confidence: number): void => {
@@ -72,6 +77,12 @@ const outdoorJourney = async (): Promise<string> => {
   return journey.id
 }
 
+/** 取落位成功后的事件 id；失败就当场炸，省得后面断言在一个 undefined 上 */
+const landedId = (result: AttentionResult): string => {
+  if (!result.ok) throw new Error(`测试前提失效：落位被拒（${result.reason}）`)
+  return result.locationEventId
+}
+
 const ownerOf = async (journeyId: string): Promise<string> => {
   const { rows } = await pool.query<{ user_id: string }>(
     'SELECT user_id FROM journey WHERE id = $1', [journeyId],
@@ -113,6 +124,7 @@ describe('写得进去 —— 规格 02 §4.2', () => {
 
     const id = await recordVisionAnchor({
       journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM,
       exhibitId: HU, confidence: 0.81,
     })
 
@@ -128,7 +140,8 @@ describe('写得进去 —— 规格 02 §4.2', () => {
     const journeyId = await indoorJourney()
 
     await recordVisionAnchor({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU, confidence: 0.9,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.9,
     })
 
     expect((await eventsOf(journeyId))[0]?.kind).toBe('confirm_zone')
@@ -138,7 +151,8 @@ describe('写得进去 —— 规格 02 §4.2', () => {
     const journeyId = await indoorJourney()
 
     await recordUserPick({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: ZHUANHUA,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU,
     })
 
     const events = await eventsOf(journeyId)
@@ -151,10 +165,11 @@ describe('写得进去 —— 规格 02 §4.2', () => {
     await pool.query("UPDATE journey SET state = 'ENDED' WHERE id = $1", [journeyId])
 
     const id = await recordVisionAnchor({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU, confidence: 0.9,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.9,
     })
 
-    expect(id).toBeNull()
+    expect(id).toEqual({ ok: false, reason: 'write_rejected' })
     expect(await eventsOf(journeyId)).toHaveLength(0)
   })
 
@@ -163,10 +178,11 @@ describe('写得进去 —— 规格 02 §4.2', () => {
     await pool.query("UPDATE journey SET state = 'ENDED' WHERE id = $1", [journeyId])
 
     const id = await recordUserPick({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU,
     })
 
-    expect(id).toBeNull()
+    expect(id).toEqual({ ok: false, reason: 'write_rejected' })
     expect(await eventsOf(journeyId)).toHaveLength(0)
   })
 })
@@ -175,7 +191,8 @@ describe('读得回来 —— 下一句话不用再报一遍', () => {
   test('落位后不带任何参数提问，Context 也知道在看哪件', async () => {
     const journeyId = await indoorJourney()
     await recordVisionAnchor({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU, confidence: 0.81,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.81,
     })
 
     const ctx = await buildContextState({ journeyId })
@@ -188,7 +205,8 @@ describe('读得回来 —— 下一句话不用再报一遍', () => {
   test('视觉落位过了有效期就不再认，回到「不知道」', async () => {
     const journeyId = await indoorJourney()
     await recordVisionAnchor({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU, confidence: 0.81,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.81,
       occurredAt: new Date(Date.now() - 3600_000),
     })
 
@@ -201,7 +219,8 @@ describe('读得回来 —— 下一句话不用再报一遍', () => {
   test('游客自己点的不过期：锁定直到他改（§4.1 ①）', async () => {
     const journeyId = await indoorJourney()
     await recordUserPick({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU,
       occurredAt: new Date(Date.now() - 3600_000),
     })
 
@@ -216,10 +235,10 @@ describe('读得回来 —— 下一句话不用再报一遍', () => {
     const journeyId = await indoorJourney()
     const userId = await ownerOf(journeyId)
     await recordUserPick({
-      journeyId, userId, exhibitId: ZHUANHUA, occurredAt: new Date(Date.now() - 7200_000),
+      journeyId, userId, sceneId: MUSEUM, exhibitId: HU, occurredAt: new Date(Date.now() - 7200_000),
     })
     await recordVisionAnchor({
-      journeyId, userId, exhibitId: HU, confidence: 0.8,
+      journeyId, userId, sceneId: MUSEUM, exhibitId: HU, confidence: 0.8,
       occurredAt: new Date(Date.now() - 3600_000),
     })
 
@@ -243,7 +262,8 @@ describe('读得回来 —— 下一句话不用再报一遍', () => {
   test('客户端自报的来源优先：当下的动作比落位的历史新', async () => {
     const journeyId = await indoorJourney()
     await recordVisionAnchor({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU, confidence: 0.81,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.81,
     })
 
     const ctx = await buildContextState({
@@ -257,12 +277,13 @@ describe('读得回来 —— 下一句话不用再报一遍', () => {
   test('客户端带的是另一件时，不把落位的置信度套到它头上', async () => {
     const journeyId = await indoorJourney()
     await recordVisionAnchor({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU, confidence: 0.81,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.81,
     })
 
-    const ctx = await buildContextState({ journeyId, poiId: ZHUANHUA })
+    const ctx = await buildContextState({ journeyId, poiId: NOT_BUILT })
 
-    expect(ctx.location).toBe(ZHUANHUA)
+    expect(ctx.location).toBe(NOT_BUILT)
     expect(ctx.locationSource).toBe('inferred')
     expect(ctx.locationConfidence).toBeLessThanOrEqual(0.6)
   })
@@ -270,7 +291,8 @@ describe('读得回来 —— 下一句话不用再报一遍', () => {
   test('室外不读落位：那边的位置由围栏引擎说了算', async () => {
     const journeyId = await outdoorJourney()
     await recordUserPick({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: FUZIMIAO, exhibitId: GONGYUAN,
     })
 
     const ctx = await buildContextState({ journeyId })
@@ -284,20 +306,22 @@ describe('认错了能撤 —— 别让语义足迹留下没看过的展品', ()
   test('撤回只删那一条识别记录', async () => {
     const journeyId = await indoorJourney()
     const id = await recordVisionAnchor({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU, confidence: 0.81,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.81,
     })
 
-    expect(await retractVisionAnchor({ journeyId, locationEventId: id as string })).toBe(true)
+    expect(await retractVisionAnchor({ journeyId, locationEventId: landedId(id) })).toBe(true)
     expect(await eventsOf(journeyId)).toHaveLength(0)
   })
 
   test('撤不掉游客自己点的：那不是系统猜的', async () => {
     const journeyId = await indoorJourney()
     const id = await recordUserPick({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: HU,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU,
     })
 
-    expect(await retractVisionAnchor({ journeyId, locationEventId: id as string })).toBe(false)
+    expect(await retractVisionAnchor({ journeyId, locationEventId: landedId(id) })).toBe(false)
     expect(await eventsOf(journeyId)).toHaveLength(1)
   })
 
@@ -305,10 +329,11 @@ describe('认错了能撤 —— 别让语义足迹留下没看过的展品', ()
     const mine = await indoorJourney()
     const theirs = await indoorJourney()
     const id = await recordVisionAnchor({
-      journeyId: theirs, userId: await ownerOf(theirs), exhibitId: HU, confidence: 0.81,
+      journeyId: theirs, userId: await ownerOf(theirs),
+      sceneId: MUSEUM, exhibitId: HU, confidence: 0.81,
     })
 
-    expect(await retractVisionAnchor({ journeyId: mine, locationEventId: id as string }))
+    expect(await retractVisionAnchor({ journeyId: mine, locationEventId: landedId(id) }))
       .toBe(false)
     expect(await eventsOf(theirs)).toHaveLength(1)
   })
@@ -374,7 +399,12 @@ describe('路由接线 —— 规格 02 §8', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  test('撤回后 Context 不再说是那件认错的', async () => {
+  /*
+   * 「认错了，但我也说不上是哪件」是真实情况：撤回之后不该退回别的东西，
+   * 该老老实实回到不知道。现在南博只建了一个锚点，所以也没有「另一件」
+   * 可以换——等锚点补齐再补一条换件的用例。
+   */
+  test('撤回后 Context 回到不知道，不拿别的顶上', async () => {
     withConfidence(0.9)
     const journeyId = await indoorJourney()
     const anchored = await app.inject({
@@ -382,15 +412,91 @@ describe('路由接线 —— 规格 02 §8', () => {
       payload: { imageKey: 'k5', journeyId, zoneHint: MUSEUM },
     })
     const { locationEventId } = JSON.parse(anchored.payload) as { locationEventId: string }
+    expect((await buildContextState({ journeyId })).location).toBe(HU)
 
     await retractVisionAnchor({ journeyId, locationEventId })
+
+    const ctx = await buildContextState({ journeyId })
+
+    expect(ctx.location).toBeNull()
+    expect(ctx.locationSource).toBe('none')
+  })
+})
+
+/**
+ * 落位前校验 —— 指不到东西的 id 不许落位。
+ *
+ * 这是「关联锚点占位」在运行时的同一种病：客户端报什么就落什么，
+ * Context 会以 user_confirmed/1.0 的口气说「正在看这件」，语义足迹也会记上，
+ * 可 anchorForPlace 取不到锚点，K1 和八要素一个都到不了用户。
+ *
+ * 校验用的就是应答路径那一个 anchorForPlace：这里认了，那边一定取得到。
+ */
+describe('落位前先确认这个 id 指得到东西', () => {
+  /** 规格 04 §4.2 第 1 行点了名，但锚点文件还没建 —— 落位时就是指不到 */
+  const NOT_BUILT = 'njm_zhulin_qixian'
+  /** 真锚点，但它在夫子庙 */
+  const OUTDOOR_POI = 'fzm_jiangnan_gongyuan'
+
+  test('点选一个没建锚点的 id：拒写，库里不留痕', async () => {
+    const journeyId = await indoorJourney()
+
+    const result = await recordUserPick({
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: NOT_BUILT,
+    })
+
+    expect(result).toEqual({ ok: false, reason: 'unknown_place' })
+    expect(await eventsOf(journeyId)).toHaveLength(0)
+  })
+
+  test('点选别的场景的锚点：在南博不可能站在江南贡院前面', async () => {
+    const journeyId = await indoorJourney()
+
+    const result = await recordUserPick({
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: OUTDOOR_POI,
+    })
+
+    expect(result).toEqual({ ok: false, reason: 'wrong_scene' })
+    expect(await eventsOf(journeyId)).toHaveLength(0)
+  })
+
+  test('点选本场景的真锚点：照写', async () => {
+    const journeyId = await indoorJourney()
+
+    const result = await recordUserPick({
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: HU,
+    })
+
+    expect(result.ok).toBe(true)
+    expect((await eventsOf(journeyId))[0]?.exhibit_id).toBe(HU)
+  })
+
+  test('视觉落位也挡一道：候选集理论上不该给出这种 id，但不靠它保证', async () => {
+    const journeyId = await indoorJourney()
+
+    const result = await recordVisionAnchor({
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: NOT_BUILT, confidence: 0.9,
+    })
+
+    expect(result).toEqual({ ok: false, reason: 'unknown_place' })
+    expect(await eventsOf(journeyId)).toHaveLength(0)
+  })
+
+  test('拒写的 id 不会被 Context 当成「正在看这件」', async () => {
+    const journeyId = await indoorJourney()
     await recordUserPick({
-      journeyId, userId: await ownerOf(journeyId), exhibitId: ZHUANHUA,
+      journeyId, userId: await ownerOf(journeyId),
+      sceneId: MUSEUM, exhibitId: NOT_BUILT,
     })
 
     const ctx = await buildContextState({ journeyId })
 
-    expect(ctx.location).toBe(ZHUANHUA)
-    expect(ctx.locationSource).toBe('user_confirmed')
+    expect(ctx.location).toBeNull()
+    expect(ctx.locationSource).toBe('none')
+    expect(ctx.visitedAnchors).toEqual([])
   })
 })

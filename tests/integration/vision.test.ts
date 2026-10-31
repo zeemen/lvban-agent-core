@@ -243,7 +243,8 @@ describe('无可用 VLM 时的降级 —— 不能在用户按下快门后抛错
 
 describe('纠正回执同时修落位 —— 规格 02 §4.1 ②「结果允许纠正」', () => {
   const HU = 'njm_cuojinyin_hu'
-  const ZHUANHUA = 'njm_zhulin_qixian'
+  /** 规格 04 点了名但锚点还没建 —— 报上来只能被拒 */
+  const NOT_BUILT = 'njm_zhulin_qixian'
 
   const anchoredJourney = async (): Promise<{
     journeyId: string; locationEventId: string
@@ -273,20 +274,38 @@ describe('纠正回执同时修落位 —— 规格 02 §4.1 ②「结果允许�
     return rows
   }
 
-  test('纠正时撤回认错的那条，并落上游客选的那件', async () => {
+  test('纠正但说不上是哪件时只撤回，不留下一条没依据的落位', async () => {
     const { journeyId, locationEventId } = await anchoredJourney()
     expect((await eventsOf(journeyId))[0]?.exhibit_id).toBe(HU)
 
     const res = await app.inject({
       method: 'POST', url: '/v1/vision/anchor/outcome',
-      payload: { corrected: true, journeyId, locationEventId, exhibitId: ZHUANHUA },
+      payload: { corrected: true, journeyId, locationEventId },
     })
 
     expect(res.statusCode).toBe(200)
+    expect(await eventsOf(journeyId)).toHaveLength(0)
+  })
+
+  /*
+   * 校验必须发生在撤回之前。否则一次坏请求会让游客既丢了原来那条、
+   * 又没拿到新的——比什么都不做更糟。
+   */
+  test('报一个指不到的 id：400，原来那条还在，命中率样本也没加', async () => {
+    const { journeyId, locationEventId } = await anchoredJourney()
+    const before = await visionHitRate()
+
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor/outcome',
+      payload: { corrected: true, journeyId, locationEventId, exhibitId: NOT_BUILT },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.payload).message).toContain('指不到任何锚点')
     const events = await eventsOf(journeyId)
     expect(events).toHaveLength(1)
-    expect(events[0]?.source).toBe('user_confirmed')
-    expect(events[0]?.exhibit_id).toBe(ZHUANHUA)
+    expect(events[0]?.exhibit_id).toBe(HU)
+    expect((await visionHitRate()).samples).toBe(before.samples)
   })
 
   test('没纠正时落位留着不动，只记一条命中率样本', async () => {
@@ -334,7 +353,7 @@ describe('点选落位 —— ask_user_pick 之后从候选里选一件（§4.1 
 
     await app.inject({
       method: 'POST', url: '/v1/vision/anchor/outcome',
-      payload: { corrected: false, journeyId: journey.id, exhibitId: 'njm_zhulin_qixian' },
+      payload: { corrected: false, journeyId: journey.id, exhibitId: 'njm_cuojinyin_hu' },
     })
 
     const { rows } = await pool.query<{ source: string; exhibit_id: string | null }>(
@@ -343,7 +362,7 @@ describe('点选落位 —— ask_user_pick 之后从候选里选一件（§4.1 
     )
     expect(rows).toHaveLength(1)
     expect(rows[0]?.source).toBe('user_confirmed')
-    expect(rows[0]?.exhibit_id).toBe('njm_zhulin_qixian')
+    expect(rows[0]?.exhibit_id).toBe('njm_cuojinyin_hu')
   })
 })
 
@@ -415,6 +434,41 @@ describe('图片用不了是客户端的问题 —— 不该回 500', () => {
       method: 'POST', url: '/v1/vision/anchor',
       payload: { imageKey: 'no-such-file.jpg', journeyId: journey.id, zoneHint: 'nanjing_museum' },
     })
+
+    const { rows } = await pool.query(
+      'SELECT 1 FROM location_event WHERE journey_id = $1', [journey.id],
+    )
+    expect(rows).toHaveLength(0)
+  })
+})
+
+/**
+ * 候选集的场景由服务端定，不由客户端的 zoneHint 定。
+ *
+ * zoneHint 缺失或填错，就会把别的场景的展品递给 VLM——在夫子庙拍一张，
+ * 可能认出南博的铜壶来，然后以 0.99 的置信度落位。
+ * 场景是服务端自己知道的事，没有理由交给客户端。
+ */
+describe('候选集先按旅程场景收窄', () => {
+  test('夫子庙的旅程拿不到南博展品，哪怕完全不传 zoneHint', async () => {
+    withConfidence(0.9)
+    const userId = await createUser()
+    const journey = await startJourney({
+      userId, mode: 'companion', party: 'solo',
+      sceneId: 'fuzimiao', trackConsent: 'visited_points_only',
+    })
+
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor',
+      payload: { imageKey: 'cross', journeyId: journey.id },
+    })
+
+    const body = JSON.parse(res.payload) as {
+      decision: string; fallbackReason: string | null; locationEventId: string | null
+    }
+    expect(body.decision).toBe('fallback_ask')
+    expect(body.fallbackReason).toContain('没有可识别的候选展品')
+    expect(body.locationEventId).toBeNull()
 
     const { rows } = await pool.query(
       'SELECT 1 FROM location_event WHERE journey_id = $1', [journey.id],

@@ -289,10 +289,18 @@ export const registerRoutes = (app: FastifyInstance): void => {
       journeyId: z.string().uuid(),
     }).parse(request.body)
     await requireJourneyOwner(request, journeyId)
+    const journey = await repo.findJourney(journeyId)
+    if (journey === null) throw new AuthError(404, '旅程不存在')
 
+    /*
+     * 候选集先按旅程的场景收窄，再让 zoneHint 在场景内继续缩小。
+     * 场景是服务端自己知道的，不能交给客户端决定：zoneHint 缺失或填错，
+     * 就会把别的场景的展品递给 VLM，在南博拍一张可能认出夫子庙的点位来。
+     */
     const anchors = await loadAnchors()
     const candidates = [...anchors.values()]
       .filter((a) => a.exhibitId !== undefined)
+      .filter((a) => a.sceneId === journey.scene_id)
       .filter((a) => zoneHint === undefined || a.sceneId === zoneHint)
       .map((a) => ({ exhibitId: a.exhibitId as string, name: a.name }))
 
@@ -302,15 +310,17 @@ export const registerRoutes = (app: FastifyInstance): void => {
     const top = result.decision === 'auto_accept' ? result.candidates[0] : undefined
     if (top === undefined) return { ...result, locationEventId: null }
 
-    const journey = await repo.findJourney(journeyId)
-    if (journey === null) throw new AuthError(404, '旅程不存在')
-    const locationEventId = await recordVisionAnchor({
+    const landed = await recordVisionAnchor({
       journeyId,
       userId: journey.user_id,
+      sceneId: journey.scene_id,
       exhibitId: top.exhibitId,
       confidence: top.confidence,
     })
-    return { ...result, locationEventId }
+    // 落位没成不吞掉：识别结果照样返回，但要说清为什么没记上
+    return landed.ok
+      ? { ...result, locationEventId: landed.locationEventId, landingRejected: null }
+      : { ...result, locationEventId: null, landingRejected: landed.reason }
   })
 
   /**
@@ -327,29 +337,44 @@ export const registerRoutes = (app: FastifyInstance): void => {
       locationEventId: z.string().uuid().optional(),
       exhibitId: z.string().optional(),
     }).parse(request.body)
-    await recordVisionOutcome(body.corrected)
-
+    /*
+     * 顺序是刻意的：先落位，再撤回，最后才记命中率样本。
+     *
+     * 点选的 id 指不到东西时整条请求 400，而此前什么都没动过——撤回没执行，
+     * 命中率窗口也没被一次坏请求掺进一个样本。反过来先撤后落，一旦落位被拒，
+     * 游客就既丢了原来那条、又没拿到新的。
+     */
     if (body.journeyId !== undefined) {
       await requireJourneyOwner(request, body.journeyId)
       const journey = await repo.findJourney(body.journeyId)
       if (journey === null) throw new AuthError(404, '旅程不存在')
+
+      /*
+       * 点选与 corrected 无关：ask_user_pick 之后从候选里点一件，
+       * 既不是「纠正」（系统本来就没敢认），也一样要落位。
+       */
+      if (body.exhibitId !== undefined) {
+        const landed = await recordUserPick({
+          journeyId: body.journeyId, userId: journey.user_id,
+          sceneId: journey.scene_id, exhibitId: body.exhibitId,
+        })
+        if (!landed.ok) {
+          throw new AuthError(400, landed.reason === 'write_rejected'
+            ? '这趟旅程已经结束了，记不上了'
+            : `exhibitId「${body.exhibitId}」在本场景里指不到任何锚点，`
+              + '只能报识别候选里给出的 id')
+        }
+      }
+
       // 只撤游客明说认错了的那一条
       if (body.corrected && body.locationEventId !== undefined) {
         await retractVisionAnchor({
           journeyId: body.journeyId, locationEventId: body.locationEventId,
         })
       }
-      /*
-       * 点选与 corrected 无关：ask_user_pick 之后从候选里点一件，
-       * 既不是「纠正」（系统本来就没敢认），也一样要落位。
-       */
-      if (body.exhibitId !== undefined) {
-        await recordUserPick({
-          journeyId: body.journeyId, userId: journey.user_id, exhibitId: body.exhibitId,
-        })
-      }
     }
 
+    await recordVisionOutcome(body.corrected)
     return visionHitRate()
   })
 

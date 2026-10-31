@@ -1,4 +1,5 @@
 import { vision as cfg } from '../config/index.js'
+import { anchorForPlace, loadAnchors } from '../content/loader.js'
 import { pool } from '../db/pool.js'
 import { writeMemory } from '../memory/gateway.js'
 
@@ -29,6 +30,41 @@ export type IndoorAttention = {
 /** §4.1 ①：游客自己点的就是 1.0 */
 const USER_CONFIRMED = 1
 
+export type AttentionRejection =
+  /** 这个 id 指不到任何锚点 */
+  | 'unknown_place'
+  /** 指得到，但那个锚点不在这趟旅程的场景里 */
+  | 'wrong_scene'
+  /** 写入网关拒了（旅程没开、监护人授权缺失等） */
+  | 'write_rejected'
+
+export type AttentionResult =
+  | { readonly ok: true; readonly locationEventId: string }
+  | { readonly ok: false; readonly reason: AttentionRejection }
+
+/**
+ * 落位前先确认这个 id 指得到东西。
+ *
+ * 不校验的后果不是报错，是**静默撒谎**：客户端报什么就落什么，Context 会用
+ * user_confirmed/1.0 的口气说「正在看这件」，语义足迹也会记上，可
+ * anchorForPlace 取不到锚点，K1 和八要素一个都到不了用户。这和语料里那套
+ * 指不到的占位编号是同一种病，只是发生在运行时。
+ *
+ * 刻意用应答路径同一个 anchorForPlace：这里认了，那边就一定取得到锚点。
+ * 换成自己写一套匹配规则，两边迟早漂。
+ *
+ * 不缓存 loadAnchors：落位是一次拍照／一次点选才走一趟，不在热路径上，
+ * 而缓存会让新加的锚点必须重启才认。
+ */
+const checkPlace = async (
+  placeId: string, sceneId: string,
+): Promise<AttentionRejection | null> => {
+  const anchor = anchorForPlace(await loadAnchors(), placeId)
+  if (anchor === null) return 'unknown_place'
+  if (anchor.sceneId !== sceneId) return 'wrong_scene'
+  return null
+}
+
 /**
  * 落位一次视觉识别（§4.2 链路末端）。返回事件 id，网关拒了则返回 null。
  *
@@ -37,10 +73,15 @@ const USER_CONFIRMED = 1
 export const recordVisionAnchor = async (input: {
   readonly journeyId: string
   readonly userId: string
+  readonly sceneId: string
   readonly exhibitId: string
   readonly confidence: number
   readonly occurredAt?: Date
-}): Promise<string | null> => {
+}): Promise<AttentionResult> => {
+  // 候选集理论上不该给出指不到的 id，但不靠它保证——zoneHint 是客户端传的
+  const bad = await checkPlace(input.exhibitId, input.sceneId)
+  if (bad !== null) return { ok: false, reason: bad }
+
   const result = await writeMemory({
     kind: 'location_event',
     userId: input.userId,
@@ -51,16 +92,27 @@ export const recordVisionAnchor = async (input: {
     confidence: input.confidence,
     occurredAt: input.occurredAt ?? new Date(),
   })
-  return result.ok ? result.id : null
+  return result.ok && result.id !== null
+    ? { ok: true, locationEventId: result.id }
+    : { ok: false, reason: 'write_rejected' }
 }
 
 /** 游客点选或纠正后的落位（§4.1 ①）。他说是哪件就是哪件，不打折 */
 export const recordUserPick = async (input: {
   readonly journeyId: string
   readonly userId: string
+  readonly sceneId: string
   readonly exhibitId: string
   readonly occurredAt?: Date
-}): Promise<string | null> => {
+}): Promise<AttentionResult> => {
+  /*
+   * 这里是客户端直接报的 id，最需要挡。
+   * 「游客说是哪件就是哪件」只在候选集之内成立——候选是我们给的，
+   * 报回一个不在里面的 id，不是游客的意思，是客户端出了问题。
+   */
+  const bad = await checkPlace(input.exhibitId, input.sceneId)
+  if (bad !== null) return { ok: false, reason: bad }
+
   const result = await writeMemory({
     kind: 'location_event',
     userId: input.userId,
@@ -71,7 +123,9 @@ export const recordUserPick = async (input: {
     confidence: USER_CONFIRMED,
     occurredAt: input.occurredAt ?? new Date(),
   })
-  return result.ok ? result.id : null
+  return result.ok && result.id !== null
+    ? { ok: true, locationEventId: result.id }
+    : { ok: false, reason: 'write_rejected' }
 }
 
 /**

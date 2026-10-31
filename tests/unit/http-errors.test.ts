@@ -92,6 +92,18 @@ describe('classifyError', () => {
     expect(JSON.stringify(body)).not.toContain('MODEL_ID_VISION')
   })
 
+  test('自带 400 的错误标成 bad_request，和 zod、图片读不到那两类口径一致', () => {
+    const badInput = Object.assign(new Error('exhibitId 在本场景里指不到任何锚点'), {
+      httpStatus: 400,
+    })
+
+    const { status, body } = classifyError(badInput)
+
+    expect(status).toBe(400)
+    expect(body.error).toBe('bad_request')
+    expect(body.message).toContain('指不到任何锚点')
+  })
+
   test('其余错误才是 500，且不把内部信息透给客户端', () => {
     const { status, body } = classifyError(new Error('某个内部断言炸了：/Users/zeemenzhou/secret'))
 

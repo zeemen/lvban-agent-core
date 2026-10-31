@@ -68,6 +68,11 @@ Docker 卷里（`/data/files/10000/<knowledge_id>/<时间戳>.md`），没有 di
 这期间重传会按 file_hash 命中那条将死的记录，看起来「传成功了」其实没有。
 等到 `deleted_at IS NULL` 的行数归零再传。
 
+卡在 `deleting` 的行有可能不会自己收尾——2026-10-30 第一次传 kb-haoshe 就留下一条，
+软删了但没清掉，带着 4 条软删分块（其中一条正是上面那段生成的摘要）躺了一天。
+它不参与检索，但对账时是个要专门解释的干扰源，所以别留着：确认它软删、分块全软删、
+`embeddings` 为 0、检索命中的 `knowledge_id` 是活着那条之后，照下面第四条清掉它。
+
 ## 关键词那一行是给检索用的，不是摘抄
 
 2026-10-30 用 60 个探针量过一轮（每个探针写明「该命中哪篇」，一半用语料自己的
@@ -151,7 +156,7 @@ reparse 需要 embedding 模型在线（当前配的是本机 Ollama 的
 `qwen3-embedding:0.6b`）。它只重算向量和分块，不删源文件。
 
 一次改多篇时，第 2–3 步照着 `file_hash` 批量对账最省事：它就是文件的 md5，
-`md5 -q <文件>` 和库里一比就知道哪几篇还没传。全部传完后三条都要为真：
+`md5 -q <文件>` 和库里一比就知道哪几篇还没传。全部传完后四条都要为真：
 
 ```sql
 -- 一、17 篇的 file_hash 与仓库 md5 全一致
@@ -159,12 +164,20 @@ reparse 需要 embedding 模型在线（当前配的是本机 Ollama 的
 SELECT count(*) FROM chunks WHERE deleted_at IS NULL AND content ~ '旧的那串';
 -- 三、summary 分块仍是 0
 SELECT chunk_type, count(*) FROM chunks WHERE deleted_at IS NULL GROUP BY 1;
+-- 四、没有软删的知识行，也没有孤儿分块
+SELECT count(*) FROM knowledges WHERE deleted_at IS NOT NULL;
+SELECT count(*) FROM chunks c
+ WHERE NOT EXISTS (SELECT 1 FROM knowledges k WHERE k.id = c.knowledge_id);
 ```
 
 **`deleted_at IS NULL` 这个条件别漏。** reparse 是软删旧分块再写新的，不加这个
 条件会看到旧分块还在、`summary` 还有一条，像是回传失败了——2026-10-31 回传
 14 篇时我就是这么误判了一轮。那条 summary 属于一条 `parse_status=deleting`
 的 kb-haoshe 残留行，早就软删了，不是新生成的。
+
+那行已于 2026-10-31 硬删（1 条知识行 + 4 条软删分块 + 7 条
+`knowledge_processing_spans`，落地目录当时已空）。所以第四条从现在起应当恒为 0 ——
+与其每次对账都要想起「那条不算」，不如让「有软删行」本身就是异常。
 
 ## 当前状态，别当成已审校的内容
 

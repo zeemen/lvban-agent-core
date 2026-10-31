@@ -63,7 +63,7 @@ const toImageUrl = async (imageKey: string): Promise<string> => {
   const path = imageKey.startsWith('file://') ? imageKey.slice('file://'.length) : imageKey
   const bytes = await readFile(path).catch((error: unknown) => {
     throw new ModelError({
-      kind: 'bad_request', provider: 'openai-compatible',
+      kind: 'invalid_input', provider: 'openai-compatible',
       message: `读不到图片：${path}（imageKey 需为 http(s) URL、data URI 或本地文件路径）`,
       cause: error,
     })
@@ -71,7 +71,7 @@ const toImageUrl = async (imageKey: string): Promise<string> => {
   if (bytes.byteLength > MAX_IMAGE_BYTES) {
     // 规格 02 §4.2 要求前端压到 300KB 以内；服务端再挡一道，避免视觉延迟失控
     throw new ModelError({
-      kind: 'bad_request', provider: 'openai-compatible',
+      kind: 'invalid_input', provider: 'openai-compatible',
       message: `图片 ${Math.round(bytes.byteLength / 1024)}KB 超过 300KB 上限，应在前端压缩后上传`,
     })
   }

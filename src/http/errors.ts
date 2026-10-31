@@ -1,4 +1,5 @@
 import { ZodError } from 'zod'
+import { ModelError } from '../models/errors.js'
 
 /** 错误分类 —— 把「客户端发错了」「依赖没起来」「服务端自己崩了」分开，
  *  小程序联调时能直接从状态码判断该改哪一边。 */
@@ -44,6 +45,17 @@ const httpStatusOf = (error: unknown): number | undefined => {
 export const classifyError = (error: unknown): Classified => {
   if (error instanceof ZodError) {
     return { status: 400, body: { error: 'bad_request', issues: error.issues } }
+  }
+
+  /*
+   * 调用方交上来的输入用不了（读不到图、图超过上限）。
+   *
+   * 只认 invalid_input 这一种：ModelError 的 bad_request 多半是模型名或 Key
+   * 配错，那是我们自己的毛病，回 400 会把小程序的排查方向指错。
+   * message 是我们自己写的提示，不含内部路径或 SQL，所以可以回传。
+   */
+  if (error instanceof ModelError && error.kind === 'invalid_input') {
+    return { status: 400, body: { error: 'bad_request', message: error.message } }
   }
 
   // 自家错误（鉴权、微信登录、配置缺失）自带状态码，message 是写给调用方看的

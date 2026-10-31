@@ -6,7 +6,15 @@ export type ModelErrorKind =
   | 'timeout'       // 超时 —— 重试
   | 'network'       // 网络 —— 重试
   | 'server'        // 5xx —— 重试
-  | 'bad_request'   // 参数/模型名错误 —— 不重试
+  | 'bad_request'   // 我们发给供应商的请求不对（参数/模型名）—— 不重试，是我们自己的毛病
+  /**
+   * 调用方交上来的输入就用不了（读不到图、图超过上限）—— 不重试。
+   *
+   * 和 bad_request 分开是因为状态码要分开：这一类回 400，调用方改了就能成；
+   * bad_request 多半是模型名或 Key 配错，回 400 会让小程序以为是自己传错了，
+   * 把排查方向指错一整天。
+   */
+  | 'invalid_input'
   | 'content_filter'// 内容被供应商拦截 —— 不重试，走降级话术
   | 'parse'         // 返回体不符合预期 —— 不重试
   | 'truncated'     // 预算耗尽、回答为空 —— 不重试（同样的请求结果一样），要告警
@@ -56,6 +64,9 @@ export const userFacingFallback = (kind: ModelErrorKind): string => {
     case 'network':
     case 'server':
       return '我这边卡了一下，你再问一遍？'
+    case 'invalid_input':
+      // 这一类目前只来自「拍一下」，所以话术指向重拍，而不是让人念展牌
+      return '这张照片我没打开，你再拍一张试试？'
     case 'auth':
     case 'bad_request':
     case 'parse':

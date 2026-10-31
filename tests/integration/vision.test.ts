@@ -1,8 +1,12 @@
+import { writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { startJourney } from '../../src/context/journey.js'
 import { redis } from '../../src/db/redis.js'
 import { registerRoutes } from '../../src/http/routes.js'
+import { ModelError } from '../../src/models/errors.js'
 import { registerAdapter, visionAvailability } from '../../src/models/router.js'
 import type { ModelAdapter } from '../../src/models/types.js'
 import {
@@ -340,5 +344,81 @@ describe('点选落位 —— ask_user_pick 之后从候选里选一件（§4.1 
     expect(rows).toHaveLength(1)
     expect(rows[0]?.source).toBe('user_confirmed')
     expect(rows[0]?.exhibit_id).toBe('njm_zhulin_qixian')
+  })
+})
+
+describe('图片用不了是客户端的问题 —— 不该回 500', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  /** 真适配器：toImageUrl 在发请求之前跑，所以这组用例不打网络 */
+  const withRealVision = (): void => {
+    vi.stubEnv('MODEL_PROVIDER', 'deepseek')
+    vi.stubEnv('MODEL_ID_VISION', 'deepseek-flash')
+    vi.stubEnv('DEEPSEEK_API_KEY', 'sk-fake-for-availability-check')
+  }
+
+  test('读不到图时分类成 invalid_input，而不是「我们的请求不对」', async () => {
+    withRealVision()
+
+    const error = await decideVisionAnchor({
+      imageKey: 'no-such-file.jpg', candidates: CANDIDATES,
+    }).catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ModelError)
+    expect((error as ModelError).kind).toBe('invalid_input')
+  })
+
+  test('图片超过 300KB 上限同样算客户端问题（§4.2 要求前端先压）', async () => {
+    withRealVision()
+    const fat = join(tmpdir(), `lvban-fat-${Date.now()}.jpg`)
+    await writeFile(fat, Buffer.alloc(400 * 1024, 1))
+
+    const error = await decideVisionAnchor({
+      imageKey: fat, candidates: CANDIDATES,
+    }).catch((e: unknown) => e)
+    await rm(fat, { force: true })
+
+    expect((error as ModelError).kind).toBe('invalid_input')
+    expect((error as ModelError).message).toContain('300KB')
+  })
+
+  test('路由把它回成 400 并说清是 imageKey 的事，不是服务端崩了', async () => {
+    withRealVision()
+    const userId = await createUser()
+    const journey = await startJourney({
+      userId, mode: 'light_guide', party: 'solo',
+      sceneId: 'nanjing_museum', trackConsent: 'visited_points_only',
+    })
+
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor',
+      payload: { imageKey: 'no-such-file.jpg', journeyId: journey.id, zoneHint: 'nanjing_museum' },
+    })
+
+    expect(res.statusCode).toBe(400)
+    const body = JSON.parse(res.payload) as { error: string; message?: string }
+    expect(body.error).toBe('bad_request')
+    expect(body.message).toContain('imageKey')
+  })
+
+  test('读不到图时什么都不落位：认不出来就是认不出来', async () => {
+    withRealVision()
+    const userId = await createUser()
+    const journey = await startJourney({
+      userId, mode: 'light_guide', party: 'solo',
+      sceneId: 'nanjing_museum', trackConsent: 'visited_points_only',
+    })
+
+    await app.inject({
+      method: 'POST', url: '/v1/vision/anchor',
+      payload: { imageKey: 'no-such-file.jpg', journeyId: journey.id, zoneHint: 'nanjing_museum' },
+    })
+
+    const { rows } = await pool.query(
+      'SELECT 1 FROM location_event WHERE journey_id = $1', [journey.id],
+    )
+    expect(rows).toHaveLength(0)
   })
 })

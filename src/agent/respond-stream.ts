@@ -1,5 +1,6 @@
 import { buildContextState } from '../context/state.js'
 import { touchJourney } from '../context/journey.js'
+import type { DeclaredSource } from '../context/provenance.js'
 import { anchorForPlace, loadAnchors, type Anchor } from '../content/loader.js'
 import { loadFillers, pickFiller, type Situation } from '../content/fillers.js'
 import type { ContextState } from '../domain/context-state.js'
@@ -125,6 +126,8 @@ export type StreamQuestionInput = {
   readonly text: string
   readonly poiId?: string | null
   readonly situation?: Situation
+  readonly locationSource?: DeclaredSource
+  readonly locationConfidence?: number
 }
 
 export async function* streamQuestion(
@@ -141,6 +144,8 @@ export async function* streamQuestion(
     journeyId: input.journeyId,
     poiId: input.poiId ?? null,
     currentTopic: anchor?.topics[0] ?? null,
+    locationSource: input.locationSource,
+    locationConfidence: input.locationConfidence,
   })
 
   const plan = decidePlan({

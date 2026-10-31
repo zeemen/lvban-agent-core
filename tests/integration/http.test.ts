@@ -94,13 +94,15 @@ describe('旅程生命周期接口', () => {
 })
 
 describe('行中接口', () => {
-  const startJourneyVia = async (): Promise<{ userId: string; journeyId: string }> => {
+  const startJourneyVia = async (
+    sceneId = 'fuzimiao',
+  ): Promise<{ userId: string; journeyId: string }> => {
     const userId = await createUser()
     const res = await app.inject({
       method: 'POST', url: '/v1/journeys',
       payload: {
         userId, mode: 'companion', party: 'solo',
-        sceneId: 'fuzimiao', trackConsent: 'visited_points_only',
+        sceneId, trackConsent: 'visited_points_only',
       },
     })
     return { userId, journeyId: json<{ journeyId: string }>(res.payload).journeyId }
@@ -141,6 +143,60 @@ describe('行中接口', () => {
     expect(ctx.stateVersion).toBe(1)
     expect(ctx.mode).toBe('companion')
     expect(ctx.scene).toBe('outdoor')
+  })
+
+  /**
+   * 规格 02 §30：室内不伪造精确位置。
+   * 南博没有围栏文件，所以室内的 poiId 必须带着真实来源进来，
+   * 客户端不报来源时只能算推断——而不是像以前那样一律记成 geofence/0.9。
+   */
+  const contextOf = async (journeyId: string, query: string) => {
+    const res = await app.inject({
+      method: 'GET', url: `/v1/journeys/${journeyId}/context?${query}`,
+    })
+    expect(res.statusCode).toBe(200)
+    return json<{ locationSource: string; locationConfidence: number; scene: string }>(res.payload)
+  }
+
+  test('室内不报来源时记成推断，置信度压在否决线以下', async () => {
+    const { journeyId } = await startJourneyVia('nanjing_museum')
+
+    const ctx = await contextOf(journeyId, 'poiId=njm_cuojinyin_hu')
+
+    expect(ctx.scene).toBe('indoor')
+    expect(ctx.locationSource).toBe('inferred')
+    expect(ctx.locationConfidence).toBeLessThanOrEqual(0.6)
+  })
+
+  test('室内视觉识别的分数原样带进 Context State', async () => {
+    const { journeyId } = await startJourneyVia('nanjing_museum')
+
+    const ctx = await contextOf(
+      journeyId, 'poiId=njm_cuojinyin_hu&locationSource=vision_anchor&locationConfidence=0.81',
+    )
+
+    expect(ctx.locationSource).toBe('vision_anchor')
+    expect(ctx.locationConfidence).toBe(0.81)
+  })
+
+  test('室内声明成 geofence 的一律不认', async () => {
+    const { journeyId } = await startJourneyVia('nanjing_museum')
+
+    const ctx = await contextOf(
+      journeyId, 'poiId=njm_cuojinyin_hu&locationSource=geofence&locationConfidence=0.95',
+    )
+
+    expect(ctx.locationSource).toBe('inferred')
+    expect(ctx.locationConfidence).toBeLessThanOrEqual(0.6)
+  })
+
+  test('室外照旧算围栏，这条路径不受影响', async () => {
+    const { journeyId } = await startJourneyVia()
+
+    const ctx = await contextOf(journeyId, 'poiId=fzm_jiangnan_gongyuan')
+
+    expect(ctx.locationSource).toBe('geofence')
+    expect(ctx.locationConfidence).toBe(0.9)
   })
 
   test('到达接口返回讲解与决策依据', async () => {

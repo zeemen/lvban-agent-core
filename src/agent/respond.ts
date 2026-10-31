@@ -1,6 +1,7 @@
 import { buildContextState } from '../context/state.js'
 import { touchJourney } from '../context/journey.js'
 import { decideProactivity, type Trigger } from '../context/proactivity.js'
+import type { DeclaredSource } from '../context/provenance.js'
 import { anchorForPlace, loadAnchors, type Anchor } from '../content/loader.js'
 import type { ContextState } from '../domain/context-state.js'
 import type { ProactivityDecision } from '../domain/enums.js'
@@ -71,6 +72,8 @@ export const onArrive = async (input: {
   readonly poiId: string
   readonly heardBefore?: readonly string[]
   readonly safetySensitive?: boolean
+  readonly locationSource?: DeclaredSource
+  readonly locationConfidence?: number
 }): Promise<AgentTurn> => {
   const anchorMap = await anchors()
   const anchor = anchorForPlace(anchorMap, input.poiId)
@@ -79,6 +82,8 @@ export const onArrive = async (input: {
     journeyId: input.journeyId,
     poiId: input.poiId,
     currentTopic: anchor?.topics[0] ?? null,
+    locationSource: input.locationSource,
+    locationConfidence: input.locationConfidence,
   })
 
   // 「已听过」是跨旅程语义：调用方不传时从库里查，否则回头客会被永远判成首次访问
@@ -140,6 +145,8 @@ export const onQuestion = async (input: {
   readonly journeyId: string
   readonly text: string
   readonly poiId?: string | null
+  readonly locationSource?: DeclaredSource
+  readonly locationConfidence?: number
 }): Promise<AgentTurn> => {
   await touchJourney(input.journeyId)
   const anchorMap = await anchors()
@@ -149,6 +156,8 @@ export const onQuestion = async (input: {
     journeyId: input.journeyId,
     poiId: input.poiId ?? null,
     currentTopic: anchor?.topics[0] ?? null,
+    locationSource: input.locationSource,
+    locationConfidence: input.locationConfidence,
   })
 
   const userWrite = await writeMemory({

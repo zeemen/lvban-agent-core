@@ -48,6 +48,18 @@ const startSchema = z.object({
   coTravelers: z.array(z.string().uuid()).optional(),
 })
 
+/**
+ * 位置来源与置信度（规格 02 §4.1 室内四件套）。
+ *
+ * 三条路由共用。室内的 poiId 必须自报来源，不报就只能算推断——
+ * 认不认、给多少分在 context/provenance.ts，这里只负责别让非法值进来。
+ * GET 的 query 全是字符串，所以置信度要 coerce。
+ */
+const declaredPlace = {
+  locationSource: z.enum(['geofence', 'user_confirmed', 'vision_anchor', 'inferred']).optional(),
+  locationConfidence: z.coerce.number().min(0).max(1).optional(),
+} as const
+
 const fixSchema = z.object({
   lat: z.number(), lng: z.number(),
   accuracyM: z.number(), at: z.string(), speedMps: z.number().optional(),
@@ -191,8 +203,13 @@ export const registerRoutes = (app: FastifyInstance): void => {
   app.get('/v1/journeys/:id/context', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
     await requireJourneyOwner(request, id)
-    const query = z.object({ poiId: z.string().optional() }).parse(request.query)
-    return buildContextState({ journeyId: id, poiId: query.poiId ?? null })
+    const query = z.object({ poiId: z.string().optional(), ...declaredPlace }).parse(request.query)
+    return buildContextState({
+      journeyId: id,
+      poiId: query.poiId ?? null,
+      locationSource: query.locationSource,
+      locationConfidence: query.locationConfidence,
+    })
   })
 
   app.post('/v1/journeys/:id/arrive', async (request) => {
@@ -202,6 +219,7 @@ export const registerRoutes = (app: FastifyInstance): void => {
       poiId: z.string(),
       heardBefore: z.array(z.string()).optional(),
       safetySensitive: z.boolean().optional(),
+      ...declaredPlace,
     }).parse(request.body)
     return onArrive({ journeyId: id, ...body })
   })
@@ -209,8 +227,9 @@ export const registerRoutes = (app: FastifyInstance): void => {
   app.post('/v1/journeys/:id/ask', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
     await requireJourneyOwner(request, id)
-    const body = z.object({ text: z.string().min(1), poiId: z.string().optional() })
-      .parse(request.body)
+    const body = z.object({
+      text: z.string().min(1), poiId: z.string().optional(), ...declaredPlace,
+    }).parse(request.body)
     return onQuestion({ journeyId: id, ...body })
   })
 
@@ -227,6 +246,7 @@ export const registerRoutes = (app: FastifyInstance): void => {
       text: z.string().min(1),
       poiId: z.string().optional(),
       situation: z.enum(['question', 'photo', 'arrive']).optional(),
+      ...declaredPlace,
     }).parse(request.body)
 
     reply.raw.writeHead(200, {

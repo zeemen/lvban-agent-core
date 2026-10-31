@@ -6,6 +6,7 @@ import { readIgnored, readLastSpoke, cacheContext } from '../memory/ephemeral.js
 import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
 import { deriveActivity, deriveFatigue, deriveInterest } from './proactivity.js'
+import { resolveLocationProvenance } from './provenance.js'
 
 /**
  * Context State 构建 —— 规格 02 §6。
@@ -106,6 +107,13 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
   const elapsedMin = Math.max(0, Math.round((now.getTime() - journey.started_at.getTime()) / 60_000))
 
   const scene = INDOOR_SCENES.has(journey.scene_id) ? 'indoor' : 'outdoor'
+  // 室内不伪造精确位置（规格 02 §30）。判定全在 provenance.ts，这里只取结果
+  const place = resolveLocationProvenance({
+    poiId,
+    scene,
+    declaredSource: input.locationSource,
+    declaredConfidence: input.locationConfidence,
+  })
   const memory = await getMemoryHooks({
     userId: journey.user_id,
     currentPlace: poiId,
@@ -125,8 +133,8 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
     scene,
     sceneId: journey.scene_id,
     location: poiId,
-    locationSource: input.locationSource ?? (poiId === null ? 'none' : 'geofence'),
-    locationConfidence: input.locationConfidence ?? (poiId === null ? 0 : 0.9),
+    locationSource: place.source,
+    locationConfidence: place.confidence,
 
     activity: deriveActivity(input.speedMps ?? null),
     isMoving: (input.speedMps ?? 0) >= 0.5,

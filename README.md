@@ -387,6 +387,10 @@ node --run dev            # 同上，但 tsx watch，改了代码自动重起
   音色代号、合成延迟、成本都待实测。
 - **ASR**：语音输入尚未接入。
 - **锚点内容**：只录了 4 个锚点（江南贡院号舍、错金银重络铜壶、竹林七贤与荣启期砖画、江南贡院明远楼），审校状态都是 `draft`，四条都没过规格 03 §9.2 的双签。M1 门槛是 30 个。南博 18 件 / 夫子庙 12 处的最终名单待内容负责人核定，选点标准见规格 04 §4.3。
+- **`nextAction` 还没有消费方**：Planner 会算出 `decision.nextAction`（锚点的
+  `nextAction.suggest`），但没有任何地方读它，所以「下一站」目前到不了用户。
+  `lint:content` 的 `next_action/dangling` 只报警告就是这个缘故——这一栏指错了
+  今天也到不了用户，但接上之前得是干净的。
 - **围栏坐标**：`content/geofences/fuzimiao.json` 里是占位值，`calibrated: false`。必须按规格 02 §9.3 现场实测后替换。
 - **微信登录的真机实测**：链路已通（`wx.login` → `/v1/auth/wx-login` → `code2session`），
   但还没用真实 appsecret 跑过。配 `WX_APPID` / `WX_APPSECRET` 即生效，

@@ -68,7 +68,14 @@ export const buildDocRows = async (): Promise<readonly DocRow[]> => {
   const [docs, anchors, wk] = await Promise.all([loadKbDocs(), loadAnchors(), weknoraIndex()])
   const known = {
     scenes: [...new Set([...anchors.values()].map((a) => a.sceneId))],
-    anchors: [...anchors.keys()],
+    // 两套 id 都算（见 content/lint.ts 的 knownAnchorIds）：面板和门禁得同口径，
+    // 否则面板说「锚点还没建」而 lint 说没事，内容负责人不知道信哪个
+    anchors: [...new Set([
+      ...anchors.keys(),
+      ...[...anchors.values()].flatMap((a) => [a.poiId, a.exhibitId].filter(
+        (id): id is string => id !== undefined,
+      )),
+    ])],
   }
 
   return docs.map((doc): DocRow => {

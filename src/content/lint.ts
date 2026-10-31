@@ -1,10 +1,11 @@
+import { pathToFileURL } from 'node:url'
 import { closePool } from '../db/pool.js'
 import { closeRedis } from '../db/redis.js'
 import type { PlanDecision } from '../planner/decide.js'
 import { checkRegister, hasHedgeMarker } from '../planner/register-guard.js'
 import { renderFromAnchor } from '../planner/render.js'
 import { findGaps, loadKbDocs } from './kb-docs.js'
-import { loadAnchors, type Anchor } from './loader.js'
+import { anchorForPlace, loadAnchors, type Anchor } from './loader.js'
 
 /**
  * 内容静态检查 —— 把规格 03 §9.1 的「口吻一致性」与「三类表述分离」
@@ -14,7 +15,7 @@ import { loadAnchors, type Anchor } from './loader.js'
  * 等到现场用户听见了才在日志里告警，就太晚了。
  */
 
-type Finding = {
+export type Finding = {
   readonly anchorId: string
   readonly severity: 'error' | 'warn'
   readonly rule: string
@@ -60,7 +61,9 @@ const MUST_CITE_PATTERNS: readonly { readonly label: string; readonly pattern: R
   { label: '出土地点', pattern: /出土于|发现于|出自.{2,8}(墓|遗址)/ },
 ]
 
-const lintAnchor = (anchor: Anchor): readonly Finding[] => {
+export const lintAnchor = (
+  anchor: Anchor, anchors: ReadonlyMap<string, Anchor>,
+): readonly Finding[] => {
   const findings: Finding[] = []
   const e = anchor.elements
 
@@ -119,6 +122,27 @@ const lintAnchor = (anchor: Anchor): readonly Finding[] => {
     }
   }
 
+  /*
+   * nextAction 指的下一站得真的存在。
+   *
+   * 只报警告，不报错误：decision.nextAction 今天算出来之后没有任何消费方
+   * （见 README「维护面板与计划里的死字段」），指错了也到不了用户，还不到
+   * 「静默地少讲」那一档。但这一栏迟早要接上，接上之前就该是干净的——
+   * 号舍锚点指着 fzm_mingyuan_lou 指了一天多，谁都没发现。
+   *
+   * 两套 id 都认：规格 04 §4.5 的例子里，锚点 fzm_jiangnan_gongyuan_haoshe
+   * 指的是点位 id fzm_mingyuan_lou，所以这一栏写锚点 id 或点位 id 都算对。
+   */
+  const suggest = e.nextAction.suggest
+  if (suggest !== null && !anchors.has(suggest) && anchorForPlace(anchors, suggest) === null) {
+    findings.push({
+      anchorId: anchor.anchorId,
+      severity: 'warn',
+      rule: 'next_action/dangling',
+      detail: `nextAction 指向「${suggest}」，但它既不是锚点 id 也不是任何锚点的点位 id`,
+    })
+  }
+
   // 上线门槛
   if (anchor.isTop30 && anchor.review.status !== 'approved') {
     findings.push({
@@ -133,6 +157,24 @@ const lintAnchor = (anchor: Anchor): readonly Finding[] => {
 }
 
 /**
+ * 语料「关联锚点」那一栏认两套 id。
+ *
+ * 应答路径靠 anchorForPlace 反查，它比的是 poiId / exhibitId；而 anchorId
+ * 是另一套（号舍锚点的 id 是 fzm_jiangnan_gongyuan_haoshe，点位 id 是
+ * fzm_jiangnan_gongyuan）。只收 anchorId 的话，kb-gongyuan 写的
+ * fzm_jiangnan_gongyuan 明明取得到锚点，却被判成「锚点还没建」——
+ * 让内容负责人去补一个已经有的东西，是比漏报更费时间的误报。
+ */
+export const knownAnchorIds = (anchors: ReadonlyMap<string, Anchor>): readonly string[] => [
+  ...new Set([
+    ...anchors.keys(),
+    ...[...anchors.values()].flatMap((a) => [a.poiId, a.exhibitId].filter(
+      (id): id is string => id !== undefined,
+    )),
+  ]),
+]
+
+/**
  * K3 语料侧只查关联锚点这一栏，不把面板上的缺口全搬过来。
  *
  * 分界线是「会不会静默地少讲」：关联锚点指不到东西，应答路径就取不到锚点，
@@ -144,7 +186,7 @@ const lintKbDocs = async (anchors: ReadonlyMap<string, Anchor>): Promise<readonl
   const docs = await loadKbDocs()
   const known = {
     scenes: [...new Set([...anchors.values()].map((a) => a.sceneId))],
-    anchors: [...anchors.keys()],
+    anchors: knownAnchorIds(anchors),
   }
 
   return docs.flatMap((doc): readonly Finding[] => {
@@ -184,7 +226,11 @@ const lintKbDocs = async (anchors: ReadonlyMap<string, Anchor>): Promise<readonl
 const run = async (): Promise<void> => {
   const anchors = await loadAnchors()
   const docs = await loadKbDocs()
-  const findings = [...[...anchors.values()].flatMap(lintAnchor), ...await lintKbDocs(anchors)]
+  const findings = [
+    // 不能直接 flatMap(lintAnchor)：flatMap 的第二个实参是下标，会当成词表传进去
+    ...[...anchors.values()].flatMap((a) => lintAnchor(a, anchors)),
+    ...await lintKbDocs(anchors),
+  ]
 
   const errors = findings.filter((f) => f.severity === 'error')
   const warns = findings.filter((f) => f.severity === 'warn')
@@ -205,10 +251,23 @@ const run = async (): Promise<void> => {
   }
 }
 
-run()
-  .then(async () => { await closePool(); await closeRedis() })
-  .catch(async (error: unknown) => {
-    console.error(error)
-    await closePool(); await closeRedis()
-    process.exit(1)
-  })
+/*
+ * 只有被当成命令跑时才执行。
+ *
+ * 不加这道判断，import 这个模块就会跑一遍 lint 并顺手 closePool/closeRedis——
+ * 同一文件里后面要用连接的用例会拿到已关闭的池子。更坏的是 errors > 0 时
+ * 这里会设 process.exitCode = 1：用例全绿，node --run test 却退 1，
+ * 而且输出里没有任何一行说明是谁设的。
+ */
+const isEntrypoint = process.argv[1] !== undefined
+  && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (isEntrypoint) {
+  run()
+    .then(async () => { await closePool(); await closeRedis() })
+    .catch(async (error: unknown) => {
+      console.error(error)
+      await closePool(); await closeRedis()
+      process.exit(1)
+    })
+}

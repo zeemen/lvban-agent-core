@@ -217,11 +217,18 @@ SELECT count(*) FROM chunks c
 
 - **占位从此拦得住。** `lint:content` 现在也查语料：关联锚点不是 `njm_`/`fzm_` 格式
   报**错误**（写错了，改语料），格式对但锚点文件还没建报**警告**（M1 进度，补锚点）。
-  后者现在正好是「有语料在等锚点」的清单，6 条：`fzm_tianxia_wenshu`、
-  `fzm_dacheng_dian`、`fzm_jiangnan_gongyuan`、`fzm_wende_qiao`、`fzm_wuyi_xiang`、
-  `njm_yuyi`。`njm_zhulin_qixian` 与 `fzm_mingyuan_lou` 已于 2026-10-31 建起草稿
-  锚点（kb-bamboo、kb-mingyuan 两篇因此不再报警告），但都是 `draft`、分别待核
-  8 条与 9 条，双签审校都没做。
+  后者现在正好是「有语料在等锚点」的清单，5 条：`fzm_tianxia_wenshu`、
+  `fzm_dacheng_dian`、`fzm_wende_qiao`、`fzm_wuyi_xiang`、`njm_yuyi`。
+  `njm_zhulin_qixian` 与 `fzm_mingyuan_lou` 已于 2026-10-31 建起草稿锚点
+  （kb-bamboo、kb-mingyuan 两篇因此不再报警告），但都是 `draft`、分别待核 8 条
+  与 9 条，双签审校都没做。
+
+  **`fzm_jiangnan_gongyuan` 本来就不该在这张清单上。** 它是号舍锚点
+  （`fzm_jiangnan_gongyuan_haoshe`）的 `poiId`，应答路径的 `anchorForPlace`
+  比的就是 `poiId`／`exhibitId`，所以 kb-gongyuan 写它一直取得到锚点。
+  是门禁只拿 `anchorId` 当词表，把一个好的写法判成了「锚点还没建」。
+  2026-10-31 改成两套 id 都认（`src/content/lint.ts` 的 `knownAnchorIds`），
+  维护面板同口径。让内容负责人去补一个已经有的东西，比漏报更费时间。
   面板上对应「关联锚点是占位编号」和「锚点还没建」两个标签。
 
   只把这一栏搬进门禁，是因为它会**静默**地少讲：取不到锚点，K1 和八要素就到不了

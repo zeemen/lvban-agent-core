@@ -6,9 +6,9 @@ import { CACHE_DIR, cachedSize, namedPath } from './cache.js'
 import {
   isFresh, loadManifest, saveManifest, stalenessReason, type Manifest,
 } from './manifest.js'
+import { presynthPlan, type PlanItem } from './plan.js'
 import { synthesize, ttsProvider } from './router.js'
 import { resolveVoice, usingPlaceholderVoice, voiceEnvName } from './voices.js'
-import type { Register } from '../planner/decide.js'
 
 /**
  * 预合成固定台词 —— 规格 03 §7.2。
@@ -19,49 +19,42 @@ import type { Register } from '../planner/decide.js'
  * 用法：node --run tts:presynth
  */
 
-const REGISTER_OF_VOICE: Record<string, Register> = {
-  peer: 'peer', storyteller: 'storyteller', concise: 'concise',
-}
-
 type Outcome = { created: number; skipped: number; restaled: number; failed: number }
 
-const synthOne = async (input: {
-  readonly text: string
-  readonly register: Register
-  readonly namedKey: string
-  readonly label: string
-  readonly provider: string
-  readonly manifest: Manifest
-}, outcome: Outcome): Promise<void> => {
-  const voice = resolveVoice(input.register, input.provider)
+const synthOne = async (
+  item: PlanItem,
+  ctx: { readonly provider: string; readonly manifest: Manifest },
+  outcome: Outcome,
+): Promise<void> => {
+  const voice = resolveVoice(item.register, ctx.provider)
   const want = {
-    provider: input.provider,
+    provider: ctx.provider,
     voice: voice.voice,
     speedRatio: voice.speedRatio,
-    text: input.text,
+    text: item.text,
   }
 
-  const existing = await cachedSize(namedPath(input.namedKey))
-  const entry = input.manifest[input.namedKey]
+  const existing = await cachedSize(namedPath(item.audioKey))
+  const entry = ctx.manifest[item.audioKey]
 
   if (existing !== null && isFresh(entry, want)) {
     outcome.skipped += 1
-    console.log(`  · 已有 ${input.namedKey}（${Math.round(existing / 1024)}KB）`)
+    console.log(`  · 已有 ${item.audioKey}（${Math.round(existing / 1024)}KB）`)
     return
   }
   if (existing !== null) {
     outcome.restaled += 1
-    console.log(`  ↻ 重合成 ${input.namedKey}：${stalenessReason(entry, want)}`)
+    console.log(`  ↻ 重合成 ${item.audioKey}：${stalenessReason(entry, want)}`)
   }
 
   try {
     const result = await synthesize(
-      { text: input.text, voice: voice.voice, speedRatio: voice.speedRatio, encoding: 'mp3' },
-      { namedKey: input.namedKey, forceRefresh: true },
+      { text: item.text, voice: voice.voice, speedRatio: voice.speedRatio, encoding: 'mp3' },
+      { namedKey: item.audioKey, forceRefresh: true },
     )
     if (result === null) throw new Error('合成返回空')
     outcome.created += 1
-    input.manifest[input.namedKey] = {
+    ctx.manifest[item.audioKey] = {
       ...want,
       bytes: result.audio.byteLength,
       durationMs: result.durationMs,
@@ -69,11 +62,11 @@ const synthOne = async (input: {
     }
     const dur = result.durationMs === null ? '' : ` ${result.durationMs}ms`
     console.log(
-      `  ✓ ${input.namedKey}  ${Math.round(result.audio.byteLength / 1024)}KB${dur}  「${input.text}」`,
+      `  ✓ ${item.audioKey}  ${Math.round(result.audio.byteLength / 1024)}KB${dur}  「${item.text}」`,
     )
   } catch (error) {
     outcome.failed += 1
-    console.log(`  ✗ ${input.label}：${(error as Error).message}`)
+    console.log(`  ✗ ${item.label}：${(error as Error).message}`)
   }
 }
 
@@ -93,37 +86,22 @@ const run = async (): Promise<void> => {
   const outcome: Outcome = { created: 0, skipped: 0, restaled: 0, failed: 0 }
   const manifest = await loadManifest()
 
+  /*
+   * 枚举走 plan.ts 的 presynthPlan，不在这里自己列一遍：
+   * 启动检查（tts/readiness.ts）核对的就是同一份清单。各列一份的话，
+   * 往后新增一类预合成内容，这里会合成它、那里却不查它。
+   */
+  const plan = presynthPlan(await loadFillers(), await loadAnchors())
+  const ctx = { provider, manifest }
+
   console.log(`\n── 预置垫音 ──`)
-  const fillers = await loadFillers()
-  for (const filler of fillers) {
-    await synthOne({
-      text: filler.text,
-      register: REGISTER_OF_VOICE[filler.register] ?? 'peer',
-      namedKey: filler.audioKey,
-      label: filler.id,
-      provider, manifest,
-    }, outcome)
+  for (const item of plan.filter((i) => i.kind === 'filler')) {
+    await synthOne(item, ctx, outcome)
   }
 
   console.log(`\n── Top 30 锚点开场段（三种口吻）──`)
-  const anchors = await loadAnchors()
-  for (const anchor of anchors.values()) {
-    if (!anchor.isTop30) continue
-    const variants = [
-      ['companion', 'peer', anchor.elements.openingHook.companion],
-      ['child', 'storyteller', anchor.elements.openingHook.child],
-      ['light', 'concise', anchor.elements.openingHook.light],
-    ] as const
-    for (const [voiceName, register, text] of variants) {
-      if (text === null || text === '') continue
-      await synthOne({
-        text,
-        register,
-        namedKey: `anchors/${anchor.anchorId}.${voiceName}.mp3`,
-        label: `${anchor.anchorId}/${voiceName}`,
-        provider, manifest,
-      }, outcome)
-    }
+  for (const item of plan.filter((i) => i.kind === 'anchor_hook')) {
+    await synthOne(item, ctx, outcome)
   }
 
   await saveManifest(manifest)

@@ -43,16 +43,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # 三个 action 都按大版本钉。第一次跑（run 41263159720）全绿，但报了
+    # 「Node.js 20 is deprecated」——v4 那批 action 的运行时是 Node 20，
+    # 现在被 runner 强行跑在 24 上，迟早会从告警变成失败，所以直接升上来。
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 本机是 pnpm 10.33.2。package.json 里没有 packageManager 字段，
       # 所以版本在这里显式写死；换版本时两处一起改。
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.33.2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # engines 写的是 >=22，但本机只在 26 上验过。要真守住 22 这条
           # 下限，得先在 22 上跑一遍再加矩阵，别凭 engines 的字面值写。

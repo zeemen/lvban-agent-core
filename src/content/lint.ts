@@ -1,6 +1,4 @@
 import { pathToFileURL } from 'node:url'
-import { closePool } from '../db/pool.js'
-import { closeRedis } from '../db/redis.js'
 import type { PlanDecision } from '../planner/decide.js'
 import { checkRegister, hasHedgeMarker } from '../planner/register-guard.js'
 import { renderFromAnchor } from '../planner/render.js'
@@ -13,6 +11,15 @@ import { anchorForPlace, loadAnchors, type Anchor } from './loader.js'
  *
  * 为什么必须在这里拦：锚点是人工精调内容，口吻问题是内容缺陷而不是运行时缺陷。
  * 等到现场用户听见了才在日志里告警，就太晚了。
+ *
+ * **这个检查不碰数据库、Redis、WeKnora，也不读任何密钥**，而且要一直如此。
+ * 锚点与语料都是磁盘上的文件，renderFromAnchor / checkRegister / findGaps
+ * 全是纯函数。中台按 git PR 交付（content/supply-chain-contract.md），
+ * 门禁必须能在一个没有 .env、没有任何服务的 CI runner 上跑起来。
+ *
+ * 原先这里 import 了 db/pool 与 db/redis，只为在收尾时关掉两个从没打开过的
+ * 连接；而 import 它们就会 import config，config 缺 DATABASE_URL 时直接抛错——
+ * 于是整个门禁在 CI 上连一行内容都还没看就先崩了。别再把它们加回来。
  */
 
 export type Finding = {
@@ -254,8 +261,7 @@ const run = async (): Promise<void> => {
 /*
  * 只有被当成命令跑时才执行。
  *
- * 不加这道判断，import 这个模块就会跑一遍 lint 并顺手 closePool/closeRedis——
- * 同一文件里后面要用连接的用例会拿到已关闭的池子。更坏的是 errors > 0 时
+ * 不加这道判断，import 这个模块就会跑一遍 lint。更坏的是 errors > 0 时
  * 这里会设 process.exitCode = 1：用例全绿，node --run test 却退 1，
  * 而且输出里没有任何一行说明是谁设的。
  */
@@ -263,11 +269,8 @@ const isEntrypoint = process.argv[1] !== undefined
   && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (isEntrypoint) {
-  run()
-    .then(async () => { await closePool(); await closeRedis() })
-    .catch(async (error: unknown) => {
-      console.error(error)
-      await closePool(); await closeRedis()
-      process.exit(1)
-    })
+  run().catch((error: unknown) => {
+    console.error(error)
+    process.exit(1)
+  })
 }

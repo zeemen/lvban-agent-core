@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { describe, expect, test } from 'vitest'
 import { knownAnchorIds, lintAnchor } from '../../src/content/lint.js'
 import { loadAnchors, type Anchor } from '../../src/content/loader.js'
@@ -108,4 +109,40 @@ describe('真实锚点全过门禁', () => {
 
     expect(dangling).toEqual([])
   })
+})
+
+describe('门禁得能在没有服务、没有密钥的机器上跑', () => {
+  /*
+   * 为什么要起子进程测：这条性质在模块图上，不在任何一个函数里。
+   *
+   * 只要有人为了收尾方便 import 一下 db/pool，lint 就会连带 import config，
+   * 而 config 缺 DATABASE_URL 时直接抛错。本机有 .env，谁都看不出来——
+   * 到 CI 上才发现门禁连一行内容都还没看就先崩了。这正是 2026-10-31
+   * 真实踩到的那一下。
+   *
+   * 中台按 git PR 交付（content/supply-chain-contract.md），门禁跑在
+   * 没有 Postgres、Redis、WeKnora，也没有 .env 的 runner 上。
+   */
+  const runGate = (): Promise<{ readonly code: number; readonly out: string }> => {
+    const env: NodeJS.ProcessEnv = { ...process.env, DOTENV_CONFIG_PATH: '/dev/null' }
+    delete env.DATABASE_URL
+    delete env.REDIS_URL
+
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['--run', 'lint:content'], { env })
+      let out = ''
+      child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
+      child.stderr.on('data', (chunk: Buffer) => { out += chunk.toString() })
+      child.on('error', reject)
+      child.on('close', (code) => { resolve({ code: code ?? -1, out }) })
+    })
+  }
+
+  test('抹掉 DATABASE_URL 与 REDIS_URL，照样检查得完并退 0', async () => {
+    const { code, out } = await runGate()
+
+    expect(out).not.toContain('缺少必需的环境变量')
+    expect(out).toMatch(/\[lint:content\] 检查 \d+ 个锚点、\d+ 篇语料/)
+    expect(code).toBe(0)
+  }, 60_000)
 })

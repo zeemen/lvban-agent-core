@@ -87,6 +87,20 @@ jobs:
       - name: 跑迁移
         run: node --run db:migrate
 
+      # 必须在跑用例之前合成垫音。audio-cache/ 是 gitignored 的（按内容寻址，
+      # 随时能重建），而取音频那个路由在缓存缺失时直接回 404
+      # （src/http/routes.ts:398），不会临时合成。
+      #
+      # miniprogram-e2e 里「垫音事件带得到的 audioKey，能取回真实音频字节」
+      # 那一条就是这么红的：本机有三百多个缓存文件，所以它一直是绿的，
+      # 2026-11-01 第一次在 CI 上跑才露出来——这条用例其实一直依赖一个
+      # 不在版本库里的产物。
+      #
+      # 不配 TTS Key 时 ttsProvider() 默认 mock（src/tts/router.ts:21），
+      # 所以这一步不会打收费接口；顺带也测了 presynth 本身跑不跑得起来。
+      - name: 预合成垫音
+        run: node --run tts:presynth
+
       # 刻意不跑 seed：集成用例各自造数据（me-routes 里的 seedPref 是文件内的
       # helper，不是这个脚本），而 src/content/seed.ts 会对没过双签的锚点逐条
       # 告警——现在四个锚点全是 draft，那是 CI 里纯粹的噪声。

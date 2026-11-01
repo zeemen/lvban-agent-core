@@ -50,7 +50,20 @@ node --run test
 node --run coverage
 ```
 
-当前：621 个测试通过、5 个跳过，行覆盖 92.8%，分支覆盖 85.5%。
+当前：783 个测试通过、5 个跳过，行覆盖 92.9%，分支覆盖 86.7%。
+覆盖率阈值写在 `vitest.config.ts`（行 80 / 函数 80 / 分支 75 / 语句 80），
+`node --run coverage` 会卡住它。
+
+> **新克隆的仓库要先 `node --run tts:presynth`。**
+> `tests/integration/miniprogram-e2e.test.ts` 有一条要取回垫音的音频字节，
+> 它读 `audio-cache/`——那个目录是 gitignored 的（按内容寻址，随时可重建），
+> 缺了的话取音频的路由直接回 404，那条用例就红。不配 TTS Key 时
+> `ttsProvider()` 默认 mock，照样合成得出来。CI 里就是这么做的。
+
+两个工作流：[`content-gate.yml`](.github/workflows/content-gate.yml)
+是内容 PR 的进料检查（约 1 秒，不依赖任何服务与密钥）；
+[`full-suite.yml`](.github/workflows/full-suite.yml) 带 Postgres + Redis
+服务容器，跑迁移、全量用例与覆盖率阈值。
 
 ## M2 做到了什么
 

@@ -30,6 +30,17 @@ afterEach(() => {
   delete process.env.AUTH_REQUIRED
 })
 
+/**
+ * 微信返回的 session_key 的值，故意取一个长而独特的哨兵串。
+ *
+ * 原先这里是 'sk'，而下面「响应里不含任何微信凭证」那条断言的是
+ * not.toContain('sk')——令牌是随机 base64url，碰巧含 "sk" 就红一次。
+ * 2026-11-01 实测撞到过：token 是 LKLEXQlH2L6IueAskGbK2FL32R_4VtdOQ7...，
+ * 里头的 "Ask" 让这条用例失败。断言的意图是对的（凭证的值绝不能回传），
+ * 错在哨兵太短，短到会和随机数据撞车。
+ */
+const WX_SESSION_KEY = 'sk-sentinel-must-never-reach-the-client'
+
 const json = <T>(payload: string): T => JSON.parse(payload) as T
 
 const stubWx = (body: unknown): void => {
@@ -39,7 +50,7 @@ const stubWx = (body: unknown): void => {
 }
 
 const login = async (openid: string): Promise<{ userId: string; token: string; isNew: boolean }> => {
-  stubWx({ openid, session_key: 'sk' })
+  stubWx({ openid, session_key: WX_SESSION_KEY })
   const res = await app.inject({ method: 'POST', url: '/v1/auth/wx-login', payload: { code: 'c' } })
   expect(res.statusCode).toBe(200)
   return json(res.payload)
@@ -66,10 +77,15 @@ describe('POST /v1/auth/wx-login', () => {
   })
 
   test('不下发 session_key，响应里不含任何微信凭证', async () => {
-    const body = await login(`o_nokey_${Date.now()}`)
+    const openid = `o_nokey_${Date.now()}`
 
-    expect(JSON.stringify(body)).not.toContain('session_key')
-    expect(JSON.stringify(body)).not.toContain('sk')
+    const body = await login(openid)
+
+    const payload = JSON.stringify(body)
+    expect(payload).not.toContain('session_key')
+    expect(payload).not.toContain(WX_SESSION_KEY)
+    // openid 是这条链路上真正拿到的那个凭证，一样不该回传给客户端
+    expect(payload).not.toContain(openid)
   })
 
   test('code 失效返回 401，客户端据此重新 wx.login', async () => {

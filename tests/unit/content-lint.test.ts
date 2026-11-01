@@ -12,6 +12,17 @@ import { loadAnchors, type Anchor } from '../../src/content/loader.js'
  * 看见的「0 错误」长得一模一样。所以得有反例。
  */
 
+/** 双签凭据的最小合法形态 —— 形状由 src/content/loader.ts 的 reviewSignerSchema 定 */
+const signedReview: Anchor['review'] = {
+  status: 'approved',
+  reviewedBy: [
+    { role: 'content_owner', account: 'owner@example.com' },
+    { role: 'history_advisor', account: 'advisor@example.com' },
+  ],
+  reviewedAt: '2026-10-31',
+  factCheckRequired: [],
+}
+
 /** 最小可用锚点。要素都填成合法值，这样测出来的只会是被测那一条规则 */
 const anchorOf = (patch: {
   readonly anchorId: string
@@ -26,7 +37,7 @@ const anchorOf = (patch: {
   exhibitId: patch.exhibitId,
   isTop30: false,
   topics: [],
-  review: { status: 'approved', reviewedBy: ['甲', '乙'], reviewedAt: '2026-10-31', factCheckRequired: [] },
+  review: signedReview,
   k1Sources: [{ title: '测试来源' }],
   elements: {
     openingHook: { companion: '你看这个。', child: null, light: null },

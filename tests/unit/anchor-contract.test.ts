@@ -34,10 +34,13 @@ const rawAnchor = (review: unknown): unknown => ({
   },
 })
 
-/** 规格 03 §9.2 要的那两个人 */
+const owner = { role: 'content_owner', account: 'owner@example.com' }
+const advisor = { role: 'history_advisor', account: 'advisor@example.com' }
+
+/** 规格 03 §9.2 要的那两方 */
 const signed = {
   status: 'approved',
-  reviewedBy: ['内容负责人甲', '外部历史顾问乙'],
+  reviewedBy: [owner, advisor],
   reviewedAt: '2026-10-31',
   factCheckRequired: [],
 }
@@ -48,8 +51,14 @@ const badFields = (review: unknown): readonly string[] => {
   return parsed.success ? [] : parsed.error.issues.map((i) => i.path.join('.'))
 }
 
+/** 报错信息全文，用来确认它说得出差在哪 */
+const message = (review: unknown): string => {
+  const parsed = anchorSchema.safeParse(rawAnchor(review))
+  return parsed.success ? '' : parsed.error.message
+}
+
 describe('approved 必须带得出双签凭据', () => {
-  test('两个不同署名 + 日期 + 待核清空：通过', () => {
+  test('两方各一个账号 + 日期 + 待核清空：通过', () => {
     expect(badFields(signed)).toEqual([])
   })
 
@@ -57,13 +66,30 @@ describe('approved 必须带得出双签凭据', () => {
     expect(badFields({ ...signed, reviewedBy: [] })).toContain('review.reviewedBy')
   })
 
-  test('同一个署名写两遍：拦住 —— 双签不是签两次', () => {
-    expect(badFields({ ...signed, reviewedBy: ['甲', '甲'] })).toContain('review.reviewedBy')
+  test('缺外部历史顾问：拦住，而且点名缺的是哪一方', () => {
+    expect(badFields({ ...signed, reviewedBy: [owner] })).toContain('review.reviewedBy')
+    expect(message({ ...signed, reviewedBy: [owner] })).toContain('外部历史顾问')
   })
 
-  test('署名只有空白字符：拦住', () => {
-    expect(badFields({ ...signed, reviewedBy: ['内容负责人甲', '   '] }))
-      .toContain('review.reviewedBy')
+  test('缺内容负责人：拦住', () => {
+    expect(message({ ...signed, reviewedBy: [advisor] })).toContain('内容负责人')
+  })
+
+  /*
+   * 双签要的是「两方」，不是「两条」。这两条分别挡住两种假双签：
+   * 同一方换个账号签两遍，以及同一个账号兼任两方。
+   */
+  test('同一方签两遍（两个账号都是内容负责人）：拦住', () => {
+    const second = { role: 'content_owner', account: 'owner2@example.com' }
+
+    expect(badFields({ ...signed, reviewedBy: [owner, second] })).toContain('review.reviewedBy')
+  })
+
+  test('同一个账号兼任两方：拦住', () => {
+    const both = [owner, { role: 'history_advisor', account: owner.account }]
+
+    expect(badFields({ ...signed, reviewedBy: both })).toContain('review.reviewedBy')
+    expect(message({ ...signed, reviewedBy: both })).toContain('兼任')
   })
 
   test('审校日期为 null：拦住', () => {
@@ -81,10 +107,53 @@ describe('approved 必须带得出双签凭据', () => {
   })
 
   test('报错信息说得出差在哪，不是一句「校验失败」', () => {
-    const parsed = anchorSchema.safeParse(rawAnchor({ ...signed, reviewedBy: ['甲'] }))
+    expect(message({ ...signed, reviewedBy: [owner] })).toContain('双签')
+  })
+})
 
-    expect(parsed.success).toBe(false)
-    if (!parsed.success) expect(parsed.error.message).toContain('双签')
+describe('署名得指得到中台的一个账号', () => {
+  /*
+   * 这一组是形状校验，和 status 无关：手打一个名字当署名，谁都查不到是谁。
+   * account 要求是中台已规范化的邮箱（见 loader.ts 的 reviewSignerSchema），
+   * 这样它能直接按 users.email 等值查到人——大小写不一致的话，那条联查会
+   * 静默查不到，而不是报错。
+   */
+  test('手打名字不是账号：拦住，并指到具体那一条', () => {
+    expect(badFields({ ...signed, reviewedBy: [{ role: 'content_owner', account: '内容负责人甲' }, advisor] }))
+      .toContain('review.reviewedBy.0.account')
+  })
+
+  test('大写没规范化：拦住 —— 否则按 users.email 查不到人', () => {
+    const upper = { role: 'content_owner', account: 'Owner@Example.com' }
+
+    expect(badFields({ ...signed, reviewedBy: [upper, advisor] }))
+      .toContain('review.reviewedBy.0.account')
+    expect(message({ ...signed, reviewedBy: [upper, advisor] })).toContain('小写')
+  })
+
+  test('账号里带空白：拦住', () => {
+    const padded = { role: 'content_owner', account: ' owner@example.com ' }
+
+    expect(badFields({ ...signed, reviewedBy: [padded, advisor] }))
+      .toContain('review.reviewedBy.0.account')
+  })
+
+  /*
+   * 中台的工作区角色是 owner/editor/reviewer/viewer，会随人事变动改；
+   * 这里要的是治理身份，签下就不再变。抄错了要拦住。
+   */
+  test('填的是中台的工作区角色而不是治理身份：拦住', () => {
+    expect(badFields({ ...signed, reviewedBy: [{ role: 'reviewer', account: 'owner@example.com' }, advisor] }))
+      .toContain('review.reviewedBy.0.role')
+  })
+
+  test('draft 也要形状对 —— 查不到人的署名什么状态下都是错的', () => {
+    expect(badFields({
+      status: 'draft',
+      reviewedBy: [{ role: 'content_owner', account: '内容负责人甲' }],
+      reviewedAt: null,
+      factCheckRequired: [],
+    })).toContain('review.reviewedBy.0.account')
   })
 })
 
@@ -103,10 +172,10 @@ describe('draft 不受双签那几条约束', () => {
     })).toEqual([])
   })
 
-  test('in_review 同样不受约束', () => {
+  test('只签了一方、还等着外部顾问，in_review 照样通过', () => {
     expect(badFields({
       status: 'in_review',
-      reviewedBy: ['内容负责人甲'],
+      reviewedBy: [owner],
       reviewedAt: null,
       factCheckRequired: ['等外部顾问看一眼'],
     })).toEqual([])

@@ -12,6 +12,29 @@ const voicedSchema = z.object({
 })
 
 /**
+ * 一个署名 —— 规格 03 §9.2 的双签，一方一条。
+ *
+ * `role` 是这个项目里的治理身份（内容负责人 / 外部历史顾问），不是中台的
+ * 工作区角色。中台的角色（owner/editor/reviewer/viewer）会随人事变动改，
+ * 而签名一旦签下就不该再变；把会变的那个抄进 git，日后只会对不上。
+ *
+ * `account` 是中台账号的邮箱，而且必须已经是中台自己的规范化形式
+ * （`services/api/app/security.py` 的 `normalize_email`：去空白 + 转小写）。
+ * 要这么严是为了能直接按 `users.email` 等值查到人——大小写不一致的话，
+ * 这条联查会静默查不到，而不是报错。这里只校验形状：邮箱长得对，不等于
+ * 中台真有这个账号。真正能核对账号的只有中台自己（见契约第四节）。
+ */
+const reviewSignerSchema = z.object({
+  role: z.enum(['content_owner', 'history_advisor']),
+  account: z.string().max(190).regex(
+    /^[^@\s]+@[^@\s.]+\.[^@\s]+$/,
+    'account 要填中台账号的邮箱',
+  ).refine((account) => account === account.toLowerCase(), {
+    message: 'account 要用中台的规范化形式（全小写），否则按 users.email 等值查不到人',
+  }),
+})
+
+/**
  * 双签审校的凭据 —— 规格 03 §9.2。
  *
  * `approved` 是唯一能把史实送进游记的开关（规格 04 §7.1，执行点
@@ -25,20 +48,36 @@ const voicedSchema = z.object({
  */
 const reviewSchema = z.object({
   status: z.enum(['draft', 'in_review', 'approved']),
-  reviewedBy: z.array(z.string()),
+  reviewedBy: z.array(reviewSignerSchema),
   reviewedAt: z.string().nullable(),
   factCheckRequired: z.array(z.string()),
   note: z.string().optional(),
 }).superRefine((review, ctx) => {
   if (review.status !== 'approved') return
 
-  // 两个人，而且不能是同一个署名写两遍：内容负责人 + 外部历史顾问
-  const signers = new Set(review.reviewedBy.map((s) => s.trim()).filter((s) => s !== ''))
-  if (signers.size < 2) {
+  /*
+   * 双签要的是「两方」，不是「两条」：内容负责人签了两次不算双签，
+   * 所以两个角色各得有人，而且不能是同一个账号兼任。
+   */
+  for (const [role, label] of [
+    ['content_owner', '内容负责人'],
+    ['history_advisor', '外部历史顾问'],
+  ] as const) {
+    if (!review.reviewedBy.some((signer) => signer.role === role)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reviewedBy'],
+        message: `approved 缺${label}的署名（role=${role}，规格 03 §9.2 双签）`,
+      })
+    }
+  }
+
+  const accounts = new Set(review.reviewedBy.map((signer) => signer.account))
+  if (accounts.size < review.reviewedBy.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['reviewedBy'],
-      message: `approved 需要两个不同的署名（规格 03 §9.2 双签），现在只有 ${signers.size} 个`,
+      message: '同一个中台账号不能兼任双签的两方',
     })
   }
 

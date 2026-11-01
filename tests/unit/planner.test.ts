@@ -18,10 +18,21 @@ const ctx: ContextState = {
   journeyId: 'j1', stateVersion: 1, computedAt: '2026-10-25T10:00:00Z',
 }
 
+/** 双签凭据的最小合法形态 —— 形状由 src/content/loader.ts 的 reviewSignerSchema 定 */
+const signedReview: Anchor['review'] = {
+  status: 'approved',
+  reviewedBy: [
+    { role: 'content_owner', account: 'owner@example.com' },
+    { role: 'history_advisor', account: 'advisor@example.com' },
+  ],
+  reviewedAt: '2026-10-01',
+  factCheckRequired: [],
+}
+
 const anchor: Anchor = {
   anchorId: 'a1', name: '号舍', sceneId: 'fuzimiao', poiId: 'p1',
   isTop30: true, topics: ['科举'],
-  review: { status: 'approved', reviewedBy: ['内容'], reviewedAt: '2026-10-01', factCheckRequired: [] },
+  review: signedReview,
   k1Sources: [{ title: '来源' }],
   elements: {
     openingHook: { companion: '这格子比你宿舍床还窄。', child: '你比划一下。', light: '这里是号舍。' },

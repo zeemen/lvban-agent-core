@@ -16,6 +16,7 @@
 | `src/vision/` | 规格 02 §4：视觉锚点与命中率熔断 |
 | `src/content/` | 锚点八要素、围栏定义、内容静态检查 |
 | `content/` | 锚点与围栏的内容文件（JSON） |
+| [`content/supply-chain-contract.md`](content/supply-chain-contract.md) | 知识库供应链中台的交付契约：产什么、按什么验收、`approved` 怎么才算真的签了 |
 | `*.html` `*.md`（根目录） | 企划书与早期材料 |
 
 ## 快速开始
@@ -387,6 +388,9 @@ node --run dev            # 同上，但 tsx watch，改了代码自动重起
   音色代号、合成延迟、成本都待实测。
 - **ASR**：语音输入尚未接入。
 - **锚点内容**：只录了 4 个锚点（江南贡院号舍、错金银重络铜壶、竹林七贤与荣启期砖画、江南贡院明远楼），审校状态都是 `draft`，四条都没过规格 03 §9.2 的双签。M1 门槛是 30 个。南博 18 件 / 夫子庙 12 处的最终名单待内容负责人核定，选点标准见规格 04 §4.3。
+  2026-10-31 定：语料与锚点的产出都移交给单独开发的「知识库供应链中台系统」，
+  这个目录将退成下游副本——交付面、验收规则、以及会因此坏掉的对账流程见
+  [`content/supply-chain-contract.md`](content/supply-chain-contract.md)。
 - **`nextAction` 还没有消费方**：Planner 会算出 `decision.nextAction`（锚点的
   `nextAction.suggest`），但没有任何地方读它，所以「下一站」目前到不了用户。
   `lint:content` 的 `next_action/dangling` 只报警告就是这个缘故——这一栏指错了

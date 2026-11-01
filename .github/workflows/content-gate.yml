@@ -1,0 +1,76 @@
+# 进料检查 —— 知识库供应链中台按 git PR 交付语料与锚点，这个工作流就是
+# content/supply-chain-contract.md 第三节那张「出厂标准」表在合并前的执行点。
+#
+# 三条刻意的决定：
+#
+# 一、不配 paths 过滤器，每个 PR 都跑。
+#    整个门禁跑完约 1 秒（本机实测 0.43s），过滤省不出什么；而 paths 写漏
+#    一条，结果是门禁「悄悄没运行」——恰好是这个项目认定最坏的那种失败。
+#    况且 verdict 依赖的不止 content/：还有 src/planner/render.ts 的拼接
+#    顺序、register-guard 的词表、loader 的 schema，列不全。
+#
+# 二、不依赖任何服务与密钥。
+#    lint:content 与 typecheck 都只读磁盘上的文件——锚点、语料是文件，
+#    renderFromAnchor / checkRegister / findGaps 是纯函数。所以 runner 上
+#    不需要 Postgres、Redis、WeKnora，也不需要 .env。
+#    这条性质有用例看着（tests/unit/content-lint.test.ts 起子进程、抹掉
+#    DATABASE_URL 跑一遍），因为它在模块图上、不在任何函数里：2026-10-31
+#    之前 lint 为了收尾方便 import 了 db/pool，连带 import config，而
+#    config 缺 DATABASE_URL 时直接抛错——本机有 .env，谁都看不见。
+#
+# 三、这里没有全量用例，所以它拦不住全部。
+#    tests/integration/* 要真实 Postgres + pgvector + 迁移，那套 service
+#    容器的接法本机验不了，就没写进来。真实的漏法举一个：2026-10-31 建起
+#    njm_zhulin_qixian 之后，三个集成用例里当「指不到的 id」用的那个常量
+#    一下子变成了合法 id——用例照样全绿，但它们测的东西已经不是原来那件。
+#    那一类只有全量用例能发现。补全量 job 是下一步。
+
+name: 内容门禁
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同一个 PR 连推几次，只留最后一次
+concurrency:
+  group: content-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: 出厂标准
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 本机是 pnpm 10.33.2。package.json 里没有 packageManager 字段，
+      # 所以版本在这里显式写死；换版本时两处一起改。
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v4
+        with:
+          # engines 写的是 >=22，但本机只在 26 上验过。要真守住 22 这条
+          # 下限，得先在 22 上跑一遍再加矩阵，别凭 engines 的字面值写。
+          node-version: 26
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: node --run typecheck
+
+      # 错误必须修复后方可合并。警告（待双签、关联锚点还没建）不拦——
+      # 那是内容负责人的待办清单，不是交付缺陷，拦了只会逼人造假。
+      - name: 内容门禁
+        run: node --run lint:content
+
+      - name: 门禁与契约自己的用例
+        run: >
+          node --run test --
+          tests/unit/content-lint.test.ts
+          tests/unit/anchor-contract.test.ts

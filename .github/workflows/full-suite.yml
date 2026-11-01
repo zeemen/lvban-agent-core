@@ -1,0 +1,94 @@
+# 全量用例 —— 跟「内容门禁」分成两个文件，是故意的。
+#
+# 门禁（content-gate.yml）的全部价值在于「1 秒、零依赖」：没有服务容器、
+# 没有密钥，内容 PR 不该为了等一套集成环境排队。把这个带服务容器、要先跑
+# 迁移的 job 塞进那个文件，那套说法当场就不成立了。
+#
+# 这里跑的正是门禁拦不住的那一类。真实的漏法举一个：2026-10-31 建起
+# njm_zhulin_qixian 之后，三个集成用例里当「指不到的 id」用的那个常量
+# 变成了合法 id——用例照样全绿，但它们测的东西已经不是原来那件了。
+#
+# 用 coverage 而不是 test：同样跑完 49 个文件、788 条用例，额外卡住
+# vitest.config.ts 里的阈值（lines 80 / functions 80 / branches 75 /
+# statements 80）。那是 testing.md 要的 80% 下限，不卡就会慢慢掉下去。
+# 本机实测 92.9% lines / 86.73% branches。
+#
+# 刻意不用 node --run db:up 与 db:wait：那两个脚本走的是 docker compose
+# 加 `docker exec lvban-pg`，runner 上的服务容器不叫这个名字。服务容器
+# 自己的 health-cmd 就是等待机制——GitHub 会等它健康了才开始跑 steps。
+
+name: 全量用例
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: full-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: 迁移 + 全量 + 覆盖率阈值
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # 镜像、口令、端口都跟 docker-compose.yml 与 .env.example 对齐。
+    # 本机与 CI 的环境差一处少一处——差出来的那一处就是将来查不明白的那一处。
+    services:
+      postgres:
+        # 必须是 pgvector 镜像：migrations/001_init.sql 第 6 行要
+        # CREATE EXTENSION IF NOT EXISTS vector，官方 postgres 镜像里没有。
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lvban
+          POSTGRES_PASSWORD: lvban_dev
+          POSTGRES_DB: lvban
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U lvban -d lvban"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+
+    # 这两条是 config/index.ts 里 required() 的，缺了连 import 都过不去。
+    # 其余（MODEL_PROVIDER / TTS_PROVIDER 等）由 vitest.config.ts 钉成 mock，
+    # 所以 CI 里不需要任何真实 Key，也不会去打收费接口。
+    env:
+      DATABASE_URL: postgres://lvban:lvban_dev@localhost:55432/lvban
+      REDIS_URL: redis://localhost:56379
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 跑迁移
+        run: node --run db:migrate
+
+      # 刻意不跑 seed：集成用例各自造数据（me-routes 里的 seedPref 是文件内的
+      # helper，不是这个脚本），而 src/content/seed.ts 会对没过双签的锚点逐条
+      # 告警——现在四个锚点全是 draft，那是 CI 里纯粹的噪声。
+      - name: 全量用例 + 覆盖率阈值
+        run: node --run coverage

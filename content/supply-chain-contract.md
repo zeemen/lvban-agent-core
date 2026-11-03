@@ -27,6 +27,17 @@ ingest 到 WeKnora，对账第一条是「17 篇的 `file_hash` 与仓库 md5 �
 逐篇导入，记下 WeKnora 返回的 id，支持撤回那一次导入。
 **这个仓库不再参与语料的流转**——`content/knowledge/` 退成历史副本。
 
+> **导入时必须显式关掉摘要生成**：body 里带
+> `"process_config": {"summary_enabled": false}`。WeKnora 的 `summary_enabled`
+> 省略即为 true（`internal/types/knowledge_process.go:5`、
+> `knowledge_process_config.go:43`），会用 LLM 写一段摘要并把它**当成一条可检索的
+> chunk** 存进库——以「资料」的身份进 prompt，直接击穿规格 03 §5.1 的
+> 「must_cite 不能自由生成」。而且这一项不读知识库配置，没有「在库上关一次」
+> 这个选项，只能每次请求带。2026-11-02 核过中台的
+> `app/integrations/weknora.py`，`deliver()` 发的 body 里还没有这一项。
+> 这个坑 2026-10-30 在 kb-haoshe 上真踩过，细节见
+> [`knowledge/README.md`](knowledge/README.md)「新增一篇时，必须关掉摘要生成」。
+
 锚点那条路还不存在。中台当前的里程碑清单里只有「知识单元 / 关系 / 问题 /
 交付」，没有锚点、八要素、三口吻、双签这些概念——所以下面第二到第四节
 就是这条路要新建的部分。

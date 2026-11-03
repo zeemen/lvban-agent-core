@@ -12,6 +12,31 @@ Docker 卷里（`/data/files/10000/<knowledge_id>/<时间戳>.md`），没有 di
 
 **改内容请改这里，再回传。** 直接在 WeKnora 界面里改，仓库这边就会变成过期副本。
 
+## 中台接手之后，上面这两条要反过来
+
+语料的产出计划移交[知识库供应链中台](https://github.com/zeemen/weknora-data-factory)
+（交付契约见 [`../supply-chain-contract.md`](../supply-chain-contract.md)）。
+它直接按 `POST /api/v1/knowledge-bases/{kb}/knowledge/manual` 往 WeKnora 导入，
+**不经过这个仓库**。切过去那天起，本页开头的两条前提都不再成立：
+
+- **「改这里再回传」要停。** 否则 WeKnora 里会有两个写入方，而且没有抓手能发现
+  它们打架——见下一条。
+- **md5 对账结构上做不到。** manual 那条路**没有文件**，所以 `file_hash` 无从产生、
+  `title` 也不再是文件名。「17 篇的 `file_hash` 与仓库 md5 全一致」这条不变式的
+  两端同时消失，不是不方便、是做不到。新抓手只能是中台的交付记录 ↔ `knowledges.id`。
+- **库会变成混合的**：今天这 17 条是文件行，中台导的是 manual 行。
+  下面「怎么把改动回传到 WeKnora」那四条对账 SQL 里，第一条以后只对得上文件行那批。
+
+和导入路径无关的那些**仍然成立**，而且其中一条中台今天还没做：
+
+- **`summary_enabled` 必须显式关掉**（下节）。2026-11-02 核过中台的
+  `app/integrations/weknora.py`，`deliver()` 发的 body 是
+  `{title, content, status, channel}`，没有 `process_config`——而 WeKnora 的
+  这一项**省略即为 true**，所以照今天的代码导进去，每一篇都会多一段模型写的、
+  可检索的「资料」。这是中台侧的一行修改。
+- 关键词只补**实测打不中**的词，补完再量一遍确认没有退步。
+- 摘要里点了名字的现象，要么把来源的解释一起写上，要么明写来源没有解释。
+
 ## 文件与库的对应
 
 目录名用的是锚点的 `sceneId`（`content/anchors/*.json`），也是 `.env` 里

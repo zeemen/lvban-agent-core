@@ -91,10 +91,29 @@ export const decideProactivity = (ctx: ContextState, trigger: Trigger): Proactiv
   const threshold = THRESHOLDS[ctx.mode]
   const reason = factors.map((f) => f.label).join(' + ') || 'no_factors'
 
-  const decision: ProactivityDecision =
+  const scored: ProactivityDecision =
     score >= threshold.speak ? 'SPEAK' : score >= threshold.soft ? 'SOFT_HINT' : 'SILENT'
 
-  return { decision, score, vetoedBy: null, reason }
+  /*
+   * 规格 02 §7.4 的「最大主动频次」。
+   *
+   * 刻意不做成硬否决：§7.2 的否决表里没有这一条，而 §7.1 给的是三值决策。
+   * 频次到了的正确行为是**降一档**——不出声，但给个气泡，而不是整条沉默。
+   * 气泡自己不受限（它没出声，再压一次就等于没有这一档）。
+   *
+   * 和 just_spoke 的分工：那条看「任何出声」，包括刚答完用户的提问，
+   * 管的是别叠话；这条只看上一次主动开口，管的是别太密。
+   */
+  const rateLimited = scored === 'SPEAK'
+    && ctx.lastProactiveSecAgo !== null
+    && ctx.lastProactiveSecAgo < threshold.minGapSec
+
+  return {
+    decision: rateLimited ? 'SOFT_HINT' : scored,
+    score,
+    vetoedBy: null,
+    reason: rateLimited ? `${reason} + speak_rate_limited` : reason,
+  }
 }
 
 export const modeThresholds = (mode: Mode): (typeof THRESHOLDS)[Mode] => THRESHOLDS[mode]

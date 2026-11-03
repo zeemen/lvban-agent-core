@@ -14,7 +14,8 @@ const ctx: ContextState = {
   dwellHereSec: 100, elapsedMin: 30, timeLeft: 60, timeOfDay: 'evening',
   nextGoal: null, routeRemaining: [], activeTask: null,
   memoryHooks: [], identityTraits: [], preferences: {}, visitedAnchors: [],
-  lastSpokeSecAgo: 300, consecutiveIgnored: 0, userIsSpeaking: false,
+  lastSpokeSecAgo: 300, lastProactiveSecAgo: null,
+  consecutiveIgnored: 0, userIsSpeaking: false,
   journeyId: 'j1', stateVersion: 1, computedAt: '2026-10-25T10:00:00Z',
 }
 

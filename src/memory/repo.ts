@@ -132,12 +132,32 @@ export const markIgnored = async (journeyId: string, turnIndex: number): Promise
  * 规格 02 §7.3 的「首次到访该点位」是跨旅程语义，只看本次旅程会把回头客
  * 永远判成首次访问，H5 的对照就失效了。
  */
+/**
+ * 排除静默卡片的 SQL 片段。
+ *
+ * 卡片出了气泡但**没出声**（规格 02 §7.1），它进 interaction 只是为了留痕。
+ * 所以任何「这句话说给用户听过没有」的判断都必须把它排除掉。
+ *
+ * 2026-11-03 加静默卡片的第一版漏了这一层，后果不是报错：一次气泡就把
+ * Top 30 锚点永久标成「已听过」，此后每次到访分数都掉进 soft 区间、只剩气泡，
+ * 自我强化，而且一个字都不报。游记那边更糟——没听过的史实会被当成听过了。
+ *
+ * 读取方一共四处，都要带上它：
+ *   · 这里的 listHeardAnchors（跨旅程的「已听过」）
+ *   · agent/travelogue.ts 的到访锚点（决定哪些史实能进游记）
+ *   · context/state.ts 的交互密度窗口（§6.2 疲劳推断的输入）
+ *   · memory/distill.ts 的主题聚合（语义足迹记下哪些主题）
+ * 以后再往 channel 枚举里加东西，这四处都得重新想一遍——编译器拦不住。
+ */
+export const notSilentCard = (alias = 'i'): string => `${alias}.channel <> 'silent_card'`
+
 export const listHeardAnchors = async (userId: string): Promise<readonly string[]> => {
   const { rows } = await pool.query<{ anchor_id: string }>(
     `SELECT DISTINCT i.anchor_id
        FROM interaction i
        JOIN journey j ON j.id = i.journey_id
       WHERE i.user_id = $1 AND i.role = 'agent' AND i.anchor_id IS NOT NULL
+        AND ${notSilentCard()}
         AND j.deleted_at IS NULL`,
     [userId],
   )

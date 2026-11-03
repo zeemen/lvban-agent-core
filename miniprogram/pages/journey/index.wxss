@@ -12,6 +12,9 @@
 .line.agent .bubble { background: #fffdf8; border: 1rpx solid #e3dbcb; }
 .line.filler .bubble { background: #ece4d4; color: #6b6153; font-style: italic; }
 .line.system .bubble { background: transparent; color: #9a8f80; font-size: 26rpx; padding: 0; }
+/* 静默卡片：看得见但不抢注意力——它的本意就是没打断你 */
+.line.card .bubble { background: #fffdf8; border: 1rpx dashed #c9bda6; color: #6b6153; }
+.card-play { display: inline-block; margin-top: 8rpx; font-size: 24rpx; color: #8a6d3b; border-bottom: 1rpx solid #d8c9a8; }
 .note { font-size: 22rpx; color: #a99e8e; margin-top: 8rpx; }
 
 .timing { font-size: 22rpx; color: #8a7f70; padding: 12rpx 4rpx; display: flex; gap: 16rpx; }

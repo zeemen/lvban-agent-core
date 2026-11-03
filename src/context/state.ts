@@ -2,7 +2,9 @@ import { pool } from '../db/pool.js'
 import type { ContextState } from '../domain/context-state.js'
 import { contextStateSchema } from '../domain/context-state.js'
 import type { AgeBand } from '../domain/enums.js'
-import { readIgnored, readLastSpoke, cacheContext } from '../memory/ephemeral.js'
+import {
+  readIgnored, readLastProactiveSpoke, readLastSpoke, cacheContext,
+} from '../memory/ephemeral.js'
 import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
 import { readIndoorAttention } from './attention.js'
@@ -71,7 +73,8 @@ const loadCounts = async (
               WHERE occurred_at <= $2::timestamptz - make_interval(mins => $3::int)
                 AND occurred_at >  $2::timestamptz - make_interval(mins => 2 * $3::int)
             )::text AS prior
-       FROM interaction WHERE journey_id = $1`,
+       FROM interaction
+      WHERE journey_id = $1 AND ${repo.notSilentCard('interaction')}`,
     [journeyId, now.toISOString(), String(RECENT_WINDOW_MIN)],
   )
   const { rows: vRows } = await pool.query<{ anchors: string[] }>(
@@ -136,7 +139,10 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
     topic: input.currentTopic ?? null,
   })
 
-  const lastSpoke = await readLastSpoke(input.journeyId)
+  const [lastSpoke, lastProactive] = await Promise.all([
+    readLastSpoke(input.journeyId),
+    readLastProactiveSpoke(input.journeyId),
+  ])
   const ignored = poiId === null ? 0 : await readIgnored(input.journeyId, poiId)
 
   const state: ContextState = {
@@ -186,6 +192,9 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
     lastSpokeSecAgo: lastSpoke === null
       ? null
       : Math.round((now.getTime() - lastSpoke.getTime()) / 1000),
+    lastProactiveSecAgo: lastProactive === null
+      ? null
+      : Math.round((now.getTime() - lastProactive.getTime()) / 1000),
     consecutiveIgnored: ignored,
     userIsSpeaking: input.userIsSpeaking ?? false,
 

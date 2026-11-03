@@ -6,14 +6,15 @@ import { anchorForPlace, loadAnchors, type Anchor } from '../content/loader.js'
 import type { ContextState } from '../domain/context-state.js'
 import type { ProactivityDecision } from '../domain/enums.js'
 import { retrievePassages } from '../knowledge/weknora.js'
-import { recordSpoke } from '../memory/ephemeral.js'
+import { recordProactiveSpoke, recordSpoke } from '../memory/ephemeral.js'
 import { writeMemory } from '../memory/gateway.js'
 import * as repo from '../memory/repo.js'
 import { complete } from '../models/router.js'
 import { buildCiteRewriteSuffix, checkCitations } from '../planner/cite-guard.js'
-import { decidePlan, type PlanDecision } from '../planner/decide.js'
+import { decidePlan, registerForMode, type PlanDecision } from '../planner/decide.js'
 import { checkRegister } from '../planner/register-guard.js'
 import { renderFromAnchor } from '../planner/render.js'
+import { buildSilentCard, type SilentCard } from '../planner/soft-hint.js'
 import { evidenceTexts } from './evidence.js'
 import { buildAnswerSystemPrompt, buildRewriteSuffix } from './prompt.js'
 
@@ -45,6 +46,8 @@ export type AgentTurn = {
   readonly vetoedBy: string | null
   readonly plan: PlanDecision | null
   readonly text: string | null
+  /** SOFT_HINT 那一档的输出：不出声的气泡（规格 02 §7.1）。其余情况为 null */
+  readonly card: SilentCard | null
   readonly usedElements: readonly string[]
   readonly guardViolations: readonly string[]
   readonly context: ContextState
@@ -60,11 +63,82 @@ const silent = (
   vetoedBy,
   plan: null,
   text: null,
+  card: null,
   usedElements: [],
   guardViolations: [],
   context: ctx,
   fromCache: false,
 })
+
+/**
+ * 出一张静默卡片（规格 02 §7.1 的 SOFT_HINT）。
+ *
+ * 三件刻意不做的事：
+ *   · 不记 recordSpoke —— 它没出声，那 60 秒的「刚讲过」要留给真的开口
+ *   · 不记 recordProactiveSpoke —— §7.4 的最大主动频次数的是开口
+ *   · 不生成新文案 —— 气泡上那句取自锚点的八要素，零模型调用
+ *
+ * 但一定要留痕：这是 agent 的一次输出，走同一个写入门记成
+ * channel=silent_card，否则运营后台回答不了「这儿到底给过提示没有」。
+ * 那个 channel 2026-11-03 之前在枚举里空等着，没有任何地方产出。
+ *
+ * 留痕失败**不吞卡片**。气泡是用户看得见的输出，写 interaction 是记账；
+ * 记账挂了还把输出删掉，等于让一次记账故障变成一次「该提示没提示」。
+ * 开口那条路径同样不看写入结果，两边一致。被拒这件事网关自己已经记进
+ * memory_audit（gateway 的 reject()），追得到，不必在这里编一个 vetoedBy——
+ * vetoedBy 是 §7.2 的否决者，写入被拒不是否决。
+ */
+const emitSilentCard = async (input: {
+  readonly ctx: ContextState
+  readonly journeyId: string
+  readonly anchor: Anchor
+  readonly heard: boolean
+  readonly proactivity: { readonly reason: string; readonly score: number }
+}): Promise<AgentTurn> => {
+  const { ctx, anchor, proactivity } = input
+  const built = buildSilentCard(anchor, registerForMode(ctx.mode), { heard: input.heard })
+  // 这档口吻一栏都没写：没东西可提示，就老实沉默
+  if (built === null) {
+    return silent(ctx, 'SOFT_HINT', `${proactivity.reason} + no_hook`, null)
+  }
+  const { card, element } = built
+
+  await writeMemory({
+    kind: 'interaction',
+    userId: ctx.user,
+    journeyId: input.journeyId,
+    role: 'agent',
+    channel: 'silent_card',
+    content: card.hint,
+    anchorId: anchor.anchorId,
+    topicTags: anchor.topics,
+    evidenceRefs: {
+      decision: 'SOFT_HINT',
+      score: proactivity.score,
+      reason: proactivity.reason,
+      element,
+      audioKey: card.audioKey,
+      k1Sources: anchor.k1Sources,
+      reviewStatus: anchor.review.status,
+    },
+    occurredAt: new Date(),
+  })
+
+  return {
+    spoke: false,
+    decision: 'SOFT_HINT',
+    proactivityReason: proactivity.reason,
+    vetoedBy: null,
+    // 没有讲解计划，只有一张卡片：这里填一个 plan 会让运营后台误以为讲过
+    plan: null,
+    text: null,
+    card,
+    usedElements: [element],
+    guardViolations: [],
+    context: ctx,
+    fromCache: true,
+  }
+}
 
 /** 到达点位：围栏触发后走这里。产生 arrive 事件 ≠ 开口。 */
 export const onArrive = async (input: {
@@ -89,17 +163,23 @@ export const onArrive = async (input: {
   // 「已听过」是跨旅程语义：调用方不传时从库里查，否则回头客会被永远判成首次访问
   const heardBefore = input.heardBefore ?? await repo.listHeardAnchors(ctx.user)
 
+  const heard = anchor !== null && heardBefore.includes(anchor.anchorId)
+
   const trigger: Trigger = {
     kind: 'geofence_arrive',
     poiId: input.poiId,
     anchorIsTop30: anchor?.isTop30 ?? false,
-    isFirstVisit: anchor !== null && !heardBefore.includes(anchor.anchorId),
+    isFirstVisit: anchor !== null && !heard,
     safetySensitive: input.safetySensitive ?? false,
   }
 
   const proactivity = decideProactivity(ctx, trigger)
-  if (proactivity.decision !== 'SPEAK' || anchor === null) {
+  // 没有锚点就没有可提示的内容，连气泡都出不了
+  if (anchor === null || proactivity.decision === 'SILENT') {
     return silent(ctx, proactivity.decision, proactivity.reason, proactivity.vetoedBy)
+  }
+  if (proactivity.decision === 'SOFT_HINT') {
+    return emitSilentCard({ ctx, journeyId: input.journeyId, anchor, heard, proactivity })
   }
 
   const plan = decidePlan({
@@ -124,7 +204,10 @@ export const onArrive = async (input: {
     evidenceRefs: { k1Sources: anchor.k1Sources, reviewStatus: anchor.review.status },
     occurredAt: new Date(),
   })
-  await recordSpoke(input.journeyId, new Date())
+  const spokeAt = new Date()
+  await recordSpoke(input.journeyId, spokeAt)
+  // 这一句是主动开的口，要进 §7.4 的频次预算；回答提问的那条路径不记
+  await recordProactiveSpoke(input.journeyId, spokeAt)
 
   return {
     spoke: true,
@@ -133,6 +216,7 @@ export const onArrive = async (input: {
     vetoedBy: null,
     plan,
     text: rendered.text,
+    card: null,
     usedElements: rendered.usedElements,
     guardViolations: guard.violations.map((v) => `${v.rule}:${v.matched}`),
     context: ctx,
@@ -282,6 +366,7 @@ export const onQuestion = async (input: {
     vetoedBy: null,
     plan,
     text,
+    card: null,
     usedElements: [
       'model:qa',
       ...(rewritten === null ? [] : ['model:qa:rewrite']),

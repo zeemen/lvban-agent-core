@@ -1,6 +1,6 @@
 import type { Filler } from '../content/fillers.js'
 import type { Anchor } from '../content/loader.js'
-import type { Register } from '../planner/decide.js'
+import { VOICE_BY_REGISTER, type Register } from '../planner/decide.js'
 
 /**
  * 预合成清单 —— 哪些固定台词该有音频。
@@ -25,25 +25,31 @@ const REGISTER_OF_VOICE: Record<string, Register> = {
   peer: 'peer', storyteller: 'storyteller', concise: 'concise',
 }
 
-/** Top 30 锚点的开场段按三种口吻各合一条（规格 03 §7.2） */
-const anchorItems = (anchor: Anchor): readonly PlanItem[] => {
-  const variants = [
-    ['companion', 'peer', anchor.elements.openingHook.companion],
-    ['child', 'storyteller', anchor.elements.openingHook.child],
-    ['light', 'concise', anchor.elements.openingHook.light],
-  ] as const
+/**
+ * 锚点开场段的音频键。
+ *
+ * 这是预合成命名的唯一来源：presynth 按它产出、启动检查按它核对、
+ * 静默卡片按它告诉客户端「点一下取哪个」（规格 02 §7.1）。
+ * 第三个消费方是 2026-11-03 加的，加之前这里只有前两个——
+ * 本文件开头那段注释说的就是为什么不能各写一套。
+ */
+export const anchorHookAudioKey = (anchorId: string, register: Register): string =>
+  `anchors/${anchorId}.${VOICE_BY_REGISTER[register]}.mp3`
 
-  return variants.flatMap(([voiceName, register, text]) =>
-    text === null || text === ''
+/** Top 30 锚点的开场段按三种口吻各合一条（规格 03 §7.2） */
+const anchorItems = (anchor: Anchor): readonly PlanItem[] =>
+  (Object.keys(VOICE_BY_REGISTER) as Register[]).flatMap((register) => {
+    const text = anchor.elements.openingHook[VOICE_BY_REGISTER[register]]
+    return text === null || text === ''
       ? []
       : [{
         kind: 'anchor_hook' as const,
-        audioKey: `anchors/${anchor.anchorId}.${voiceName}.mp3`,
+        audioKey: anchorHookAudioKey(anchor.anchorId, register),
         text,
         register,
-        label: `${anchor.anchorId}/${voiceName}`,
-      }])
-}
+        label: `${anchor.anchorId}/${VOICE_BY_REGISTER[register]}`,
+      }]
+  })
 
 export const presynthPlan = (
   fillers: readonly Filler[],

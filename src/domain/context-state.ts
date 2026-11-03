@@ -55,6 +55,12 @@ export const contextStateSchema = z.object({
   visitedAnchors: z.array(z.string()),
 
   lastSpokeSecAgo: z.number().int().nullable(),
+  /**
+   * 上一次**主动开口**距今多少秒。规格 02 §7.4 的最大主动频次只数它：
+   * 回答用户提问不算（那不是主动），出一张静默卡片也不算（它没出声）。
+   * 这趟还没主动开口过是 null。
+   */
+  lastProactiveSecAgo: z.number().int().nullable(),
   consecutiveIgnored: z.number().int().min(0),
   userIsSpeaking: z.boolean(),
 

@@ -13,6 +13,7 @@ const TTL_SEC = 24 * 60 * 60 // 旅程结束 + 24h
 const signalKey = (journeyId: string): string => `l0:signal:${journeyId}`
 const contextKey = (journeyId: string): string => `l0:ctx:${journeyId}`
 const spokeKey = (journeyId: string): string => `l0:spoke:${journeyId}`
+const proactiveKey = (journeyId: string): string => `l0:proactive:${journeyId}`
 const ignoredKey = (journeyId: string, poiId: string): string => `l0:ign:${journeyId}:${poiId}`
 
 export type InferredSignal = {
@@ -47,13 +48,34 @@ export const readCachedContext = async (journeyId: string): Promise<unknown | nu
   return raw === null ? null : JSON.parse(raw)
 }
 
-/** 最近一次主动开口的时间，供主动性引擎的 last_spoke_sec_ago 与硬否决使用 */
+/**
+ * 最近一次**出声**的时间 —— 主动讲解和回答提问都算。
+ * 供硬否决里的 last_spoke_sec_ago（60 秒内刚讲过，别叠话）使用。
+ */
 export const recordSpoke = async (journeyId: string, at: Date): Promise<void> => {
   await redis.set(spokeKey(journeyId), at.toISOString(), 'EX', TTL_SEC)
 }
 
 export const readLastSpoke = async (journeyId: string): Promise<Date | null> => {
   const raw = await redis.get(spokeKey(journeyId))
+  return raw === null ? null : new Date(raw)
+}
+
+/**
+ * 最近一次**主动开口**的时间 —— 规格 02 §7.4 的最大主动频次按它算
+ * （同游 8 分钟 / 亲子 6 分钟 / 轻导览 15 分钟）。
+ *
+ * 为什么不和 recordSpoke 共用一个键：那一个的语义是「出过声」，
+ * 包含用户问完之后我答的那一句。用它来算主动频次，会变成
+ * 「用户刚问过，接下来 8 分钟我就不能主动说话」——那是两件事。
+ * 静默卡片也不记这里：它没出声，§7.4 数的是开口。
+ */
+export const recordProactiveSpoke = async (journeyId: string, at: Date): Promise<void> => {
+  await redis.set(proactiveKey(journeyId), at.toISOString(), 'EX', TTL_SEC)
+}
+
+export const readLastProactiveSpoke = async (journeyId: string): Promise<Date | null> => {
+  const raw = await redis.get(proactiveKey(journeyId))
   return raw === null ? null : new Date(raw)
 }
 

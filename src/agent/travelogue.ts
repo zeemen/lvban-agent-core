@@ -130,9 +130,15 @@ export const collectMaterial = async (
     [journeyId],
   )
 
+  /*
+   * 只出过一张没人点开的气泡，不等于这件史实讲给人听过了。
+   * 不排除的话，游记会把用户没听过的史实写进「你今天看过的」——
+   * 正是「游记不许编造经历」要防的那件事（规格 04 §7.1）。
+   */
   const { rows: visited } = await pool.query<{ anchor_id: string }>(
-    `SELECT DISTINCT anchor_id FROM interaction
-      WHERE journey_id = $1 AND anchor_id IS NOT NULL`,
+    `SELECT DISTINCT i.anchor_id FROM interaction i
+      WHERE i.journey_id = $1 AND i.anchor_id IS NOT NULL
+        AND ${repo.notSilentCard()}`,
     [journeyId],
   )
 

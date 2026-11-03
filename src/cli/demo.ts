@@ -73,6 +73,11 @@ const runJourney = async (input: {
     if (arrival.guardViolations.length > 0) {
       console.log(`  └─ ⚠ 口吻守卫命中：${arrival.guardViolations.join(', ')}`)
     }
+  } else if (arrival.card !== null) {
+    console.log(`\n  旅伴 > ［气泡·没出声］${arrival.card.hint}`)
+    console.log(`  └─ 主动性：${arrival.decision}（${arrival.proactivityReason}）`)
+    console.log(`  └─ 用到的锚点要素：${arrival.usedElements.join(', ')}（零模型调用）`)
+    console.log(`  └─ 点开可播：${arrival.card.audioKey ?? '无——换了侧面，presynth 只覆盖开场钩子'}`)
   } else {
     console.log(`\n  旅伴 > （保持安静：${arrival.vetoedBy ?? arrival.proactivityReason}）`)
   }

@@ -14,7 +14,8 @@ const baseContext: ContextState = {
   dwellHereSec: 120, elapsedMin: 40, timeLeft: 60, timeOfDay: 'evening',
   nextGoal: null, routeRemaining: [], activeTask: null,
   memoryHooks: [], identityTraits: [], preferences: {}, visitedAnchors: [],
-  lastSpokeSecAgo: 600, consecutiveIgnored: 0, userIsSpeaking: false,
+  lastSpokeSecAgo: 600, lastProactiveSecAgo: null,
+  consecutiveIgnored: 0, userIsSpeaking: false,
   journeyId: 'j1', stateVersion: 1, computedAt: '2026-10-25T10:00:00Z',
 }
 
@@ -141,5 +142,69 @@ describe('派生字段 —— 规格 02 §6.2', () => {
     expect(deriveActivity(1.2)).toBe('walking')
     expect(deriveActivity(0.1)).toBe('still')
     expect(deriveActivity(null)).toBe('still')
+  })
+})
+
+describe('最大主动频次 —— 规格 02 §7.4', () => {
+  /*
+   * 这一档刻意不是硬否决。§7.2 的否决表里没有它，只有 §7.4 的
+   * 「最大主动频次」；而 §7.1 给了三值决策。所以频次到了的正确行为是
+   * **降一档**——不出声，但给个气泡，而不是整条沉默。
+   *
+   * 区别于 just_spoke：那条看的是「任何出声」（包括刚答完用户的提问），
+   * 60 秒内别叠话，整条压下；这条只看上一次**主动开口**。
+   */
+  test('刚主动开口过 → 够开口的分数降级成气泡，而不是整条沉默', () => {
+    const ctx = { ...baseContext, lastProactiveSecAgo: 120 }
+
+    const result = decideProactivity(ctx, arrive)
+
+    expect(result.decision).toBe('SOFT_HINT')
+    expect(result.vetoedBy).toBeNull()
+    expect(result.reason).toContain('speak_rate_limited')
+  })
+
+  test('过了间隔照常开口', () => {
+    const ctx = { ...baseContext, lastProactiveSecAgo: 9 * 60 }
+
+    expect(decideProactivity(ctx, arrive).decision).toBe('SPEAK')
+  })
+
+  test('这趟还没主动开口过就不受限', () => {
+    expect(decideProactivity(baseContext, arrive).decision).toBe('SPEAK')
+  })
+
+  test('间隔按模式分：7 分钟前开过口，同游还要等，亲子已经可以了', () => {
+    const ctx = { ...baseContext, lastProactiveSecAgo: 7 * 60 }
+
+    expect(decideProactivity(ctx, arrive).decision).toBe('SOFT_HINT')
+    expect(decideProactivity({ ...ctx, mode: 'family_study' }, arrive).decision).toBe('SPEAK')
+    expect(modeThresholds('light_guide').minGapSec)
+      .toBeGreaterThan(modeThresholds('companion').minGapSec)
+  })
+
+  test('气泡本身不受频次限制——它没出声，不该再被压成沉默', () => {
+    // 已听过 → 分数落在 soft 区间
+    const ctx = { ...baseContext, lastProactiveSecAgo: 10, interest: 'medium' as const }
+
+    const result = decideProactivity(ctx, { kind: 'geofence_arrive', anchorIsTop30: true })
+
+    expect(result.score).toBeLessThan(modeThresholds('companion').speak)
+    expect(result.decision).toBe('SOFT_HINT')
+  })
+
+  test('60 秒内刚出过声仍然是硬否决，不降级成气泡', () => {
+    const ctx = { ...baseContext, lastSpokeSecAgo: 20, lastProactiveSecAgo: null }
+
+    const result = decideProactivity(ctx, arrive)
+
+    expect(result.decision).toBe('SILENT')
+    expect(result.vetoedBy).toBe('just_spoke')
+  })
+
+  test('用户主动提问不受频次限制', () => {
+    const ctx = { ...baseContext, lastProactiveSecAgo: 1 }
+
+    expect(decideProactivity(ctx, { kind: 'user_question' }).decision).toBe('SPEAK')
   })
 })

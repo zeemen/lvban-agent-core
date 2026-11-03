@@ -78,6 +78,9 @@ const chat = async (): Promise<void> => {
       if (turn.spoke) {
         console.log(`\n旅伴 > ${turn.text}`)
         console.log(`       [决策 ${turn.decision} · ${turn.proactivityReason} · 开场=${turn.plan?.openWith} · 要素=${turn.usedElements.join(',')}]\n`)
+      } else if (turn.card !== null) {
+        console.log(`\n旅伴 > ［气泡·没出声］${turn.card.hint}`)
+        console.log(`       [决策 ${turn.decision} · ${turn.proactivityReason} · 要素=${turn.usedElements.join(',')} · 点开可播=${turn.card.audioKey ?? '无（换了侧面，没预合成）'}]\n`)
       } else {
         console.log(`\n旅伴 > （保持安静：${turn.vetoedBy ?? turn.proactivityReason}）\n`)
       }

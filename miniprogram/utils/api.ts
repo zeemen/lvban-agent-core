@@ -1,3 +1,4 @@
+import type { SilentCard } from '../shared/silent-card'
 import type { WireEvent } from '../shared/stream-events'
 import { createUtf8StreamDecoder } from './utf8'
 import { createSseParser, toWireEvent } from './sse'
@@ -77,9 +78,15 @@ export type Journey = {
   readonly trackConsent: string
 }
 
+export type { SilentCard }
+
 export type ArriveResult = {
   readonly spoke: boolean
   readonly text: string | null
+  /** SPEAK / SOFT_HINT / SILENT —— 规格 02 §7.1 的三值决策 */
+  readonly decision: string
+  /** SOFT_HINT 那一档的输出：不出声的气泡。其余情况为 null */
+  readonly card: SilentCard | null
   readonly vetoedBy: string | null
   readonly proactivityReason: string
 }

@@ -107,6 +107,7 @@ const buildFootprints = async (
               COALESCE(array_agg(DISTINCT t) FILTER (WHERE t IS NOT NULL), '{}') AS topics
          FROM interaction i LEFT JOIN unnest(i.topic_tags) t ON true
         WHERE i.journey_id = $1
+          AND ${repo.notSilentCard()}
           AND (i.anchor_id = ANY($2::text[]) OR i.anchor_id = $3)`,
       [journey.id, anchorIds, row.place_id],
     )

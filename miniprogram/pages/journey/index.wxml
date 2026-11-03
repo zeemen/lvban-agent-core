@@ -51,6 +51,11 @@
     <scroll-view class="dialog" scroll-y scroll-into-view="tail">
       <view wx:for="{{lines}}" wx:key="index" class="line {{item.kind}}">
         <view class="bubble">{{item.text}}</view>
+        <!-- 静默卡片要用户自己点才出声：自动播就等于打断了 -->
+        <view
+          wx:if="{{item.kind === 'card' && item.audioKey && voiceOn}}"
+          class="card-play" data-key="{{item.audioKey}}" bindtap="onPlayCard"
+        >点一下听</view>
         <view wx:if="{{item.note}}" class="note">{{item.note}}</view>
       </view>
       <view id="tail"></view>

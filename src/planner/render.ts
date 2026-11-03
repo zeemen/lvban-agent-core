@@ -1,5 +1,5 @@
 import type { Anchor } from '../content/loader.js'
-import type { PlanDecision, Register } from './decide.js'
+import { VOICE_BY_REGISTER, type PlanDecision, type Voice } from './decide.js'
 
 /**
  * 文案组装 —— 把人工精调的锚点要素按决策拼成一段话。
@@ -8,10 +8,6 @@ import type { PlanDecision, Register } from './decide.js'
  * 所以这一层不调模型：锚点命中的讲解零模型调用、零延迟。
  * 只有「针对随机提问的回答」才走 Model Router（见 src/agent/respond.ts）。
  */
-
-const VOICE_BY_REGISTER = { peer: 'companion', storyteller: 'child', concise: 'light' } as const
-
-type Voice = (typeof VOICE_BY_REGISTER)[Register]
 
 const pick = (
   field: { readonly companion: string | null; readonly child: string | null; readonly light: string | null },

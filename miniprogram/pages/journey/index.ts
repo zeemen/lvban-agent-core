@@ -20,9 +20,12 @@ import {
 type TrackConsent = 'none' | 'visited_points_only' | 'full_track'
 
 type Line = {
-  readonly kind: 'filler' | 'agent' | 'user' | 'system'
+  /** card 是规格 02 §7.1 的静默卡片：不出声，点一下才播 */
+  readonly kind: 'filler' | 'agent' | 'user' | 'system' | 'card'
   readonly text: string
   readonly note?: string
+  /** 只有 card 有：点一下要播的音频键。非 Top 30 锚点没有预合成，就不显示播放 */
+  readonly audioKey?: string
 }
 
 type PageData = {
@@ -139,6 +142,17 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     audio?.push(client.audioUrl(audioKey))
   },
 
+  /**
+   * 点开静默卡片。
+   *
+   * 刻意要用户自己点：SOFT_HINT 的全部意义就是没打断他——
+   * 到了这一步还自动播，等于把这一档变回 SPEAK。
+   */
+  onPlayCard(e: WechatMiniprogram.BaseEvent<Record<string, never>, { key: string }>) {
+    const key = e.currentTarget.dataset.key
+    if (key) this.playAudio(key)
+  },
+
   appendLine(line: Line) {
     this.setData({ lines: [...this.data.lines, line] })
   },
@@ -210,6 +224,14 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
 
       if (result.spoke && result.text !== null) {
         this.appendLine({ kind: 'agent', text: result.text, note: `到达 ${poi.name}` })
+      } else if (result.card !== null) {
+        // 分不够开口、或者主动频次到了：出气泡，不出声（规格 02 §7.1）
+        this.appendLine({
+          kind: 'card',
+          text: result.card.hint,
+          audioKey: result.card.audioKey ?? undefined,
+          note: `到了${poi.name}，没出声：${result.proactivityReason}`,
+        })
       } else {
         this.appendLine({
           kind: 'system',

@@ -50,6 +50,23 @@ const REGISTER_BY_MODE: Record<Mode, Register> = {
   light_guide: 'concise',
 }
 
+/** 口吻档位只看模式（规格 03 §2）。静默卡片也要用，所以单独开一个出口 */
+export const registerForMode = (mode: Mode): Register => REGISTER_BY_MODE[mode]
+
+/**
+ * 口吻档位 → 锚点八要素里「分口吻那三栏」的字段名。
+ *
+ * 这一份是唯一的：文案组装（render.ts）、预合成命名（tts/plan.ts）、
+ * 静默卡片（soft-hint.ts）都从这里取。各写一套的代价不是编译错误，
+ * 是预合成出来的文件名和取音频时的键对不上——表现为点一下没声音，
+ * 而且不报错。这个项目已经因为「两套规则各走一边」踩过一次。
+ */
+export const VOICE_BY_REGISTER = {
+  peer: 'companion', storyteller: 'child', concise: 'light',
+} as const
+
+export type Voice = (typeof VOICE_BY_REGISTER)[Register]
+
 /** 规格 03 §2：年龄分层 × 单段长度 → maxTokens（中文约 1 字 ≈ 0.7 token，留余量） */
 const MAX_TOKENS_BY_AGE: Record<AgeBand, number> = {
   under_12: 90,

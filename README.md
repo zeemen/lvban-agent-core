@@ -9,6 +9,7 @@
 | 路径 | 内容 |
 |---|---|
 | [`specs/`](specs/README.md) | 四份技术规格 V1.0 —— 代码的唯一依据 |
+| [`docs/技术框架-V1.0.md`](docs/技术框架-V1.0.md) | 分层与边界、四种契约、降级矩阵、已知架构缺口 —— 规格之下已经立起来的那套结构 |
 | `src/memory/` | 规格 01：四层记忆、写入网关、蒸馏、检索 |
 | `src/context/` | 规格 02：Journey 状态机、围栏、Context State、主动性引擎 |
 | `src/planner/` | 规格 03：Explanation Planner、口吻守卫 |

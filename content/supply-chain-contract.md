@@ -34,7 +34,8 @@ ingest 到 WeKnora，对账第一条是「17 篇的 `file_hash` 与仓库 md5 �
 > chunk** 存进库——以「资料」的身份进 prompt，直接击穿规格 03 §5.1 的
 > 「must_cite 不能自由生成」。而且这一项不读知识库配置，没有「在库上关一次」
 > 这个选项，只能每次请求带。2026-11-02 核过中台的
-> `app/integrations/weknora.py`，`deliver()` 发的 body 里还没有这一项。
+> `app/integrations/weknora.py`，`deliver()` 发的 body 里还没有这一项，
+> 已推给中台：[weknora-data-factory#3](https://github.com/zeemen/weknora-data-factory/issues/3)。
 > 这个坑 2026-10-30 在 kb-haoshe 上真踩过，细节见
 > [`knowledge/README.md`](knowledge/README.md)「新增一篇时，必须关掉摘要生成」。
 

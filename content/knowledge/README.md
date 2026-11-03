@@ -33,7 +33,8 @@ Docker 卷里（`/data/files/10000/<knowledge_id>/<时间戳>.md`），没有 di
   `app/integrations/weknora.py`，`deliver()` 发的 body 是
   `{title, content, status, channel}`，没有 `process_config`——而 WeKnora 的
   这一项**省略即为 true**，所以照今天的代码导进去，每一篇都会多一段模型写的、
-  可检索的「资料」。这是中台侧的一行修改。
+  可检索的「资料」。这是中台侧的一行修改，已推给中台：
+  [weknora-data-factory#3](https://github.com/zeemen/weknora-data-factory/issues/3)。
 - 关键词只补**实测打不中**的词，补完再量一遍确认没有退步。
 - 摘要里点了名字的现象，要么把来源的解释一起写上，要么明写来源没有解释。
 

@@ -6,11 +6,17 @@ import { initialTracker, type TrackerState } from './geofence.js'
 const TTL_SEC = 24 * 60 * 60
 const key = (journeyId: string, poiId: string): string => `l0:fence:${journeyId}:${poiId}`
 
+/**
+ * 铺在 initialTracker 上面，而不是直接当 TrackerState 用：这些 JSON 有 24 小时
+ * TTL，加字段那天 Redis 里还躺着没有该字段的旧状态。直接断言类型的话，
+ * 新字段会是 undefined 而类型系统说它不是，排查起来是最难看的那种 bug。
+ */
 export const readTracker = async (
   journeyId: string, poiId: string,
 ): Promise<TrackerState> => {
   const raw = await redis.get(key(journeyId, poiId))
-  return raw === null ? initialTracker : (JSON.parse(raw) as TrackerState)
+  if (raw === null) return initialTracker
+  return { ...initialTracker, ...(JSON.parse(raw) as Partial<TrackerState>) }
 }
 
 export const writeTracker = async (

@@ -256,3 +256,56 @@ describe('频次扣分数的是主动开口次数 —— 规格 02 §7.3 第 7 �
     expect(chatty.reason).toContain('spoke_too_often')
   })
 })
+
+describe('精度降权档只能到软提示 —— 规格 02 §2.2', () => {
+  /** base 的分数足够 SPEAK（top30 0.30 + 首访 0.20 + interest 0.15 + 话题 0.10 = 0.75） */
+  test('精度 35m 时把本该开口的压成气泡', () => {
+    // Arrange
+    const degraded = { ...baseContext, accuracyM: 35 }
+
+    // Act
+    const result = decideProactivity(degraded, arrive)
+
+    // Assert：分数不变，只是档位降一级
+    expect(result.score).toBe(0.75)
+    expect(result.decision).toBe('SOFT_HINT')
+    expect(result.reason).toContain('accuracy_degraded')
+  })
+
+  test('精度 12m 时照常开口 —— 对照组', () => {
+    expect(decideProactivity(baseContext, arrive).decision).toBe('SPEAK')
+  })
+
+  test('降权不会把本来就该沉默的抬成气泡', () => {
+    // 轻导览模式阈值 0.70/0.50，再叠疲劳 −0.25 → 0.30，低于 soft
+    const ctx = {
+      ...baseContext, mode: 'light_guide' as const, fatigue: 'high' as const,
+      currentTopic: null, interest: 'low' as const, accuracyM: 35,
+    }
+
+    const result = decideProactivity(ctx, arrive)
+
+    expect(result.decision).toBe('SILENT')
+  })
+
+  test('降权不绕过硬否决 —— 否决了就是沉默，不是气泡', () => {
+    const ctx = { ...baseContext, accuracyM: 35, isDining: true }
+
+    const result = decideProactivity(ctx, arrive)
+
+    expect(result.decision).toBe('SILENT')
+    expect(result.vetoedBy).toBe('is_dining')
+  })
+
+  test('没有精度信息时不降权 —— 室内本来就没有 GPS 精度这回事', () => {
+    const ctx = { ...baseContext, accuracyM: null }
+
+    expect(decideProactivity(ctx, arrive).decision).toBe('SPEAK')
+  })
+
+  test('用户主动提问不受降权影响 —— 问了就一定答', () => {
+    const ctx = { ...baseContext, accuracyM: 45 }
+
+    expect(decideProactivity(ctx, { kind: 'user_question' }).decision).toBe('SPEAK')
+  })
+})

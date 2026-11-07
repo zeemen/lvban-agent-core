@@ -34,6 +34,12 @@ export type TrackerState = {
   readonly consecutiveInside: number
   readonly insideSinceMs: number | null
   readonly lastTriggeredMs: number | null
+  /**
+   * 触发那一刻那条定位有多准。装配层拿它判降权档（规格 02 §2.2），
+   * 所以这个值必须由围栏层自己写：/arrive 是客户端另起的一次调用，
+   * 指望它把精度再报一遍，等于「不报就不降权」。
+   */
+  readonly lastTriggeredAccuracyM: number | null
 }
 
 export const initialTracker: TrackerState = {
@@ -41,6 +47,7 @@ export const initialTracker: TrackerState = {
   consecutiveInside: 0,
   insideSinceMs: null,
   lastTriggeredMs: null,
+  lastTriggeredAccuracyM: null,
 }
 
 export type GeofenceEvent = 'arrive' | 'leave' | null
@@ -86,8 +93,21 @@ export const evaluateGeofence = (
   const cooldown = def.cooldownSec ?? cfg.geofenceCooldownSec
   const nowMs = fix.at.getTime()
 
-  // 条件 2：精度不够时的正确行为是闭嘴，不是猜（规格 02 §2.2）
-  if (fix.accuracyM > cfg.trustedAccuracyM) {
+  /*
+   * 规格 02 §2.2 把精度分成三档，不是两档：
+   *   > 50m        丢弃 —— 精度不够时的正确行为是闭嘴，不是猜
+   *   25–50m       降权 —— 只能触发软提示，不能触发自动讲解
+   *   ≤ 25m        可信
+   *
+   * 这里以前拿 trustedAccuracyM（25m）当丢弃线，于是中间那一档整条不产生事件。
+   * 夫子庙是密集街巷 + 水体 + 夜间，25–50m 是常态而不是边缘情况，等于把
+   * 常态当异常处理掉了。降权档照走下面五个条件。
+   *
+   * 这一层只管丢弃线，不判「是不是降权档」：降一档是决策，归决策内核
+   * （proactivity.ts 的 accuracy_degraded）。两处各判一次，迟早漂成两套阈值。
+   * 围栏层要做的是把触发那一刻的精度记进 state，让内核有据可依。
+   */
+  if (fix.accuracyM > cfg.maxAccuracyM) {
     return { state, event: null, distanceM, blockedBy: 'accuracy_too_low' }
   }
 
@@ -143,7 +163,13 @@ export const evaluateGeofence = (
   }
 
   return {
-    state: { inside: true, consecutiveInside, insideSinceMs, lastTriggeredMs: nowMs },
+    state: {
+      inside: true,
+      consecutiveInside,
+      insideSinceMs,
+      lastTriggeredMs: nowMs,
+      lastTriggeredAccuracyM: fix.accuracyM,
+    },
     event: 'arrive',
     distanceM,
     blockedBy: null,

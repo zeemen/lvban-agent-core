@@ -86,7 +86,7 @@ describe('evaluateGeofence 六个触发条件', () => {
 
   test('冷却期内不重复触发同一点位', () => {
     const triggered: TrackerState = {
-      inside: false,
+      ...initialTracker,
       consecutiveInside: 1,
       insideSinceMs: T0.getTime(),
       lastTriggeredMs: T0.getTime(),
@@ -101,6 +101,7 @@ describe('evaluateGeofence 六个触发条件', () => {
 
 describe('evaluateGeofence 迟滞', () => {
   const inside: TrackerState = {
+    ...initialTracker,
     inside: true, consecutiveInside: 2,
     insideSinceMs: T0.getTime(), lastTriggeredMs: T0.getTime(),
   }
@@ -135,5 +136,51 @@ describe('pickActiveFence', () => {
 
   test('都不在范围内时返回 null', () => {
     expect(pickActiveFence([GONGYUAN], fixAt({ lat: 0.01 }, T0))).toBeNull()
+  })
+})
+
+describe('精度 25–50m 是降权档，不是丢弃档 —— 规格 02 §2.2', () => {
+  /** 六条件齐备地走到触发：连续两次 + 停够 20s */
+  const arriveWith = (accuracyM: number) => {
+    const first = evaluateGeofence(GONGYUAN, initialTracker, fixAt({}, T0, { accuracyM }))
+    return evaluateGeofence(GONGYUAN, first.state, fixAt({}, after(25), { accuracyM }))
+  }
+
+  test('精度 35m 照样产生 arrive —— 这一档以前整条不触发', () => {
+    // Arrange / Act：人在圆心，精度 35m —— 夫子庙夜间的常态
+    const result = arriveWith(35)
+
+    // Assert
+    expect(result.event).toBe('arrive')
+    expect(result.blockedBy).toBeNull()
+  })
+
+  test('边界：恰好 50m 还算收下，不丢弃（规格写的是 > 50 才丢）', () => {
+    expect(arriveWith(50).event).toBe('arrive')
+  })
+
+  test('精度超过 50m 仍然整条丢弃 —— 那一档是「不猜」', () => {
+    const result = arriveWith(60)
+
+    expect(result.event).toBeNull()
+    expect(result.blockedBy).toBe('accuracy_too_low')
+  })
+
+  test('降权档不跳过其余五个条件 —— 停留不够照样不触发', () => {
+    const first = evaluateGeofence(GONGYUAN, initialTracker, fixAt({}, T0, { accuracyM: 35 }))
+    const second = evaluateGeofence(GONGYUAN, first.state, fixAt({}, after(5), { accuracyM: 35 }))
+
+    expect(second.event).toBeNull()
+    expect(second.blockedBy).toBe('dwell_too_short')
+  })
+
+  /*
+   * 围栏层不判「是不是降权档」，只把触发那一刻的精度记下来——降一档是决策，
+   * 归 proactivity。这里要守的是那个值真的被记住了：/arrive 是客户端另起的
+   * 一次调用，不记住就只能让它自己把精度再报一遍，等于「不报就不降权」。
+   */
+  test('触发时把那条定位的精度记进 state，供装配层判降权', () => {
+    expect(arriveWith(35).state.lastTriggeredAccuracyM).toBe(35)
+    expect(arriveWith(12).state.lastTriggeredAccuracyM).toBe(12)
   })
 })

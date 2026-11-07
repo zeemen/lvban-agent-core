@@ -38,6 +38,19 @@ const IGNORED_LIMIT = 2
 const MIN_LOCATION_CONFIDENCE = 0.6
 const SPOKE_DENSITY_WINDOW_MIN = 10
 
+/**
+ * 精度降权档 —— 规格 02 §2.2：「25–50m → 只能触发软提示，不能触发自动讲解」。
+ *
+ * 判定刻意写成「比 25m 差就算」，而不是「落在 25–50m 之间」：超过 50m 的定位
+ * 本该在采集层就被丢掉（ingest.ts），万一漏到这里，更差的精度绝不能换来
+ * 更宽松的处置。区间写法会让 60m 变成「不降权」，那是把漏洞开在安全的那一侧。
+ *
+ * accuracyM 为 null 不降权：室内根本没有 GPS 精度这回事（见 provenance.ts），
+ * 室内的「不知道在哪」由 locationConfidence 的 0.6 否决线管，不是这一条。
+ */
+const isAccuracyDegraded = (ctx: ContextState): boolean =>
+  ctx.accuracyM !== null && ctx.accuracyM > cfg.trustedAccuracyM
+
 /** 规格 02 §7.2 硬否决表 */
 export const hardVeto = (ctx: ContextState, trigger: Trigger): string | null => {
   if (ctx.userIsSpeaking) return 'user_is_speaking'
@@ -118,11 +131,25 @@ export const decideProactivity = (ctx: ContextState, trigger: Trigger): Proactiv
     && ctx.lastProactiveSecAgo !== null
     && ctx.lastProactiveSecAgo < threshold.minGapSec
 
+  /*
+   * 两条「降一档」规则，叠加而不互相覆盖：频次到了（上面）和精度不够（§2.2）。
+   *
+   * 都只压 SPEAK，不动 SOFT_HINT 和 SILENT —— 降权是封顶，不是赋值：
+   * 分数本来就到不了软提示线的，不该因为精度差反而冒出一张气泡来。
+   * 两条都成立时 reason 里都留着，不然现场问「为什么只出了气泡」只能看到一半。
+   */
+  const cappedToHint = scored === 'SPEAK' && (rateLimited || isAccuracyDegraded(ctx))
+  const notes = [
+    reason,
+    ...(isAccuracyDegraded(ctx) ? ['accuracy_degraded'] : []),
+    ...(rateLimited ? ['speak_rate_limited'] : []),
+  ]
+
   return {
-    decision: rateLimited ? 'SOFT_HINT' : scored,
+    decision: cappedToHint ? 'SOFT_HINT' : scored,
     score,
     vetoedBy: null,
-    reason: rateLimited ? `${reason} + speak_rate_limited` : reason,
+    reason: notes.join(' + '),
   }
 }
 

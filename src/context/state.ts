@@ -10,6 +10,7 @@ import * as repo from '../memory/repo.js'
 import { readIndoorAttention } from './attention.js'
 import { deriveActivity, deriveFatigue, deriveInterest } from './proactivity.js'
 import { resolveLocationProvenance } from './provenance.js'
+import { readTracker } from './tracker.js'
 
 /**
  * Context State 构建 —— 规格 02 §6。
@@ -33,6 +34,17 @@ export type BuildInput = {
 
 const INDOOR_SCENES = new Set(['nanjing_museum'])
 const RECENT_WINDOW_MIN = 20
+
+/**
+ * 两个精度来源取更差的那个 —— 客户端可以补一个精度上来，但不能用一个更好的数
+ * 把围栏层记下的降权（规格 02 §2.2）洗掉。规格给这一档的理由是
+ * 「精度不够时的正确行为是闭嘴，不是猜」，拿不准就往保守那一侧倒。
+ */
+const worseAccuracy = (a: number | null, b: number | null): number | null => {
+  if (a === null) return b
+  if (b === null) return a
+  return Math.max(a, b)
+}
 
 const timeOfDay = (at: Date): ContextState['timeOfDay'] => {
   const h = at.getHours()
@@ -122,6 +134,16 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
   // 客户端指的是另一件时，落位的置信度不能套到它头上
   const anchored = stored !== null && stored.placeId === poiId ? stored : null
 
+  /*
+   * 室外：触发那一刻那条定位有多准，是围栏层记在 tracker 里的（geofence.ts）。
+   * 必须从服务端读回来，不能依赖 /arrive 把精度再报一遍——客户端不报就等于
+   * 25–50m 这一档的降权不生效，那是把规格 §2.2 交给调用方自觉。
+   * 室内没有 GPS 精度这回事（见 provenance.ts），所以不读。
+   */
+  const triggeredAccuracyM = scene === 'outdoor' && poiId !== null
+    ? (await readTracker(input.journeyId, poiId)).lastTriggeredAccuracyM
+    : null
+
   const counts = await loadCounts(input.journeyId, poiId, now)
   const elapsedMin = Math.max(0, Math.round((now.getTime() - journey.started_at.getTime()) / 60_000))
 
@@ -161,7 +183,7 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
     activity: deriveActivity(input.speedMps ?? null),
     isMoving: (input.speedMps ?? 0) >= 0.5,
     isDining: input.isDining ?? false,
-    accuracyM: input.accuracyM ?? null,
+    accuracyM: worseAccuracy(input.accuracyM ?? null, triggeredAccuracyM),
 
     currentTopic: input.currentTopic ?? null,
     interest: deriveInterest({

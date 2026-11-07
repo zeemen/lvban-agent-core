@@ -3,7 +3,7 @@ import type { ContextState } from '../domain/context-state.js'
 import { contextStateSchema } from '../domain/context-state.js'
 import type { AgeBand } from '../domain/enums.js'
 import {
-  readIgnored, readLastProactiveSpoke, readLastSpoke, cacheContext,
+  readIgnored, readLastProactiveSpoke, readProactiveCount, readLastSpoke, cacheContext,
 } from '../memory/ephemeral.js'
 import { getMemoryHooks } from '../memory/retrieval.js'
 import * as repo from '../memory/repo.js'
@@ -139,9 +139,10 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
     topic: input.currentTopic ?? null,
   })
 
-  const [lastSpoke, lastProactive] = await Promise.all([
+  const [lastSpoke, lastProactive, proactiveCount] = await Promise.all([
     readLastSpoke(input.journeyId),
     readLastProactiveSpoke(input.journeyId),
+    readProactiveCount(input.journeyId),
   ])
   const ignored = poiId === null ? 0 : await readIgnored(input.journeyId, poiId)
 
@@ -192,6 +193,7 @@ export const buildContextState = async (input: BuildInput): Promise<ContextState
     lastSpokeSecAgo: lastSpoke === null
       ? null
       : Math.round((now.getTime() - lastSpoke.getTime()) / 1000),
+    proactiveCount,
     lastProactiveSecAgo: lastProactive === null
       ? null
       : Math.round((now.getTime() - lastProactive.getTime()) / 1000),

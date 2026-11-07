@@ -14,6 +14,7 @@ const signalKey = (journeyId: string): string => `l0:signal:${journeyId}`
 const contextKey = (journeyId: string): string => `l0:ctx:${journeyId}`
 const spokeKey = (journeyId: string): string => `l0:spoke:${journeyId}`
 const proactiveKey = (journeyId: string): string => `l0:proactive:${journeyId}`
+const proactiveCountKey = (journeyId: string): string => `l0:pcount:${journeyId}`
 const ignoredKey = (journeyId: string, poiId: string): string => `l0:ign:${journeyId}:${poiId}`
 
 export type InferredSignal = {
@@ -71,7 +72,23 @@ export const readLastSpoke = async (journeyId: string): Promise<Date | null> => 
  * 静默卡片也不记这里：它没出声，§7.4 数的是开口。
  */
 export const recordProactiveSpoke = async (journeyId: string, at: Date): Promise<void> => {
+  const countKey = proactiveCountKey(journeyId)
   await redis.set(proactiveKey(journeyId), at.toISOString(), 'EX', TTL_SEC)
+  await redis.incr(countKey)
+  await redis.expire(countKey, TTL_SEC)
+}
+
+/**
+ * 本次旅程主动开口了几次 —— 规格 02 §7.3 第 7 行的频次扣分按它算
+ * （「已开口次数 > 时长/10min」→ −0.20）。
+ *
+ * 和上面那个时间戳同进同出，刻意分成两个键：时间戳要被覆盖（只关心最近一次），
+ * 计数要累加，塞进一个键就得自己解析拼接。两个键都走 purgeJourney 的
+ * `l0:*:<journeyId>*` 通配，旅程清理时一起消失。
+ */
+export const readProactiveCount = async (journeyId: string): Promise<number> => {
+  const raw = await redis.get(proactiveCountKey(journeyId))
+  return raw === null ? 0 : Number(raw)
 }
 
 export const readLastProactiveSpoke = async (journeyId: string): Promise<Date | null> => {

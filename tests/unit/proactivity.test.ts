@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   decideProactivity, deriveActivity, deriveFatigue, deriveInterest,
-  hardVeto, modeThresholds, type Trigger,
+  hardVeto, modeThresholds, scoreFactors, type Trigger,
 } from '../../src/context/proactivity.js'
 import type { ContextState } from '../../src/domain/context-state.js'
 
@@ -14,7 +14,7 @@ const baseContext: ContextState = {
   dwellHereSec: 120, elapsedMin: 40, timeLeft: 60, timeOfDay: 'evening',
   nextGoal: null, routeRemaining: [], activeTask: null,
   memoryHooks: [], identityTraits: [], preferences: {}, visitedAnchors: [],
-  lastSpokeSecAgo: 600, lastProactiveSecAgo: null,
+  lastSpokeSecAgo: 600, lastProactiveSecAgo: null, proactiveCount: 0,
   consecutiveIgnored: 0, userIsSpeaking: false,
   journeyId: 'j1', stateVersion: 1, computedAt: '2026-10-25T10:00:00Z',
 }
@@ -206,5 +206,53 @@ describe('最大主动频次 —— 规格 02 §7.4', () => {
     const ctx = { ...baseContext, lastProactiveSecAgo: 1 }
 
     expect(decideProactivity(ctx, { kind: 'user_question' }).decision).toBe('SPEAK')
+  })
+})
+
+describe('频次扣分数的是主动开口次数 —— 规格 02 §7.3 第 7 行', () => {
+  const labels = (patch: Partial<ContextState>): readonly string[] =>
+    scoreFactors({ ...baseContext, ...patch }, arrive).map((f) => f.label)
+
+  // 规格原文：「本次旅程已开口次数 > 时长/10min」→ −0.20。
+  // 以前比的是 visitedAnchors.length（去重的到访**点位**数），
+  // 于是一个默默走过很多点位、系统一次都没开口的用户会被扣分，
+  // 而且越是沉默地逛得多、越不可能再开口——方向正好反了。
+
+  test('默默走过很多点位但一次没主动开口，不扣频次分', () => {
+    const walked = Array.from({ length: 12 }, (_, i) => `poi_${i}`)
+    expect(labels({ visitedAnchors: walked, proactiveCount: 0, elapsedMin: 40 }))
+      .not.toContain('spoke_too_often')
+  })
+
+  test('主动开口次数超过「时长/10min」才扣', () => {
+    // 40 分钟 → 预算 4 次
+    expect(labels({ proactiveCount: 5, elapsedMin: 40 })).toContain('spoke_too_often')
+  })
+
+  test('刚好用满预算不扣 —— 规格写的是严格大于', () => {
+    expect(labels({ proactiveCount: 4, elapsedMin: 40 })).not.toContain('spoke_too_often')
+  })
+
+  test('旅程头 10 分钟预算是 1 次，不是 0 次', () => {
+    expect(labels({ proactiveCount: 1, elapsedMin: 5 })).not.toContain('spoke_too_often')
+    expect(labels({ proactiveCount: 2, elapsedMin: 5 })).toContain('spoke_too_often')
+  })
+
+  test('到访点位数再多也不再影响这一项', () => {
+    const many = Array.from({ length: 30 }, (_, i) => `poi_${i}`)
+    const withPois = labels({ visitedAnchors: many, proactiveCount: 2, elapsedMin: 40 })
+    const withoutPois = labels({ visitedAnchors: [], proactiveCount: 2, elapsedMin: 40 })
+    expect(withPois).toEqual(withoutPois)
+  })
+
+  test('扣分真的落到分数上 —— 同样的触发，开口太多就从 SPEAK 掉到 SOFT_HINT', () => {
+    // Top30 +0.30 首访 +0.20 高兴趣 +0.15 话题 +0.10 = 0.75，companion 阈值 0.50
+    const calm = decideProactivity({ ...baseContext, proactiveCount: 0, elapsedMin: 40 }, arrive)
+    expect(calm.decision).toBe('SPEAK')
+    expect(calm.score).toBe(0.75)
+
+    const chatty = decideProactivity({ ...baseContext, proactiveCount: 9, elapsedMin: 40 }, arrive)
+    expect(chatty.score).toBe(0.55)
+    expect(chatty.reason).toContain('spoke_too_often')
   })
 })

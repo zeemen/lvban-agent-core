@@ -159,8 +159,14 @@ describe('卡片不等于讲过', () => {
     const first = await onArrive({ journeyId: journey.id, poiId: POI })
     expect(first.decision).toBe('SOFT_HINT')
 
-    // 频次过去之后再来：这里不传 heardBefore，由服务端自己查
+    // 「频次过去之后再来」要把旅程本身也往前推：§7.3 第 7 行的预算是
+    // 「时长/10min」，旅程才刚开始时预算只有 1 次，不推就变成在考两件事。
+    await pool.query(
+      `UPDATE journey SET started_at = now() - interval '25 minutes' WHERE id = $1`,
+      [journey.id],
+    )
     await recordProactiveSpoke(journey.id, new Date(Date.now() - 20 * 60_000))
+    // 这里不传 heardBefore，由服务端自己查
     const second = await onArrive({ journeyId: journey.id, poiId: POI })
 
     expect(second.decision).toBe('SPEAK')

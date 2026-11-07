@@ -64,8 +64,18 @@ export const scoreFactors = (ctx: ContextState, trigger: Trigger): readonly Fact
   if (ctx.currentTopic !== null) factors.push({ label: 'topic_related', delta: 0.10 })
   if (ctx.fatigue === 'high') factors.push({ label: 'fatigue_high', delta: -0.25 })
 
+  /*
+   * 规格原文：「本次旅程已开口次数 > 时长/10min」。
+   *
+   * 数的是**主动**开口，不是任何出声：同一张表里 interest=high 给 +0.15，
+   * 而它的来源是「用户问了 ≥2 次」（§6.2）。要是这一行把回答也算进来，
+   * 用户多问几句就会同时拿到 +0.15 和 −0.20，一张表自己打自己。
+   * 能被这一项管住的，只有引擎自己决定要不要发出的那些话。
+   *
+   * 静默卡片同样不算 —— 它没出声，§7.3 这一行数的是「开口」。
+   */
   const allowance = Math.max(1, ctx.elapsedMin / SPOKE_DENSITY_WINDOW_MIN)
-  if (ctx.visitedAnchors.length > allowance) {
+  if (ctx.proactiveCount > allowance) {
     factors.push({ label: 'spoke_too_often', delta: -0.20 })
   }
   if (ctx.mode === 'light_guide') factors.push({ label: 'light_guide_mode', delta: -0.20 })

@@ -61,6 +61,11 @@ export const contextStateSchema = z.object({
    * 这趟还没主动开口过是 null。
    */
   lastProactiveSecAgo: z.number().int().nullable(),
+  /**
+   * 本次旅程**主动开口**的次数。规格 02 §7.3 第 7 行的频次扣分数它，
+   * 口径和 lastProactiveSecAgo 完全一致：回答提问不算，静默卡片不算。
+   */
+  proactiveCount: z.number().int().min(0),
   consecutiveIgnored: z.number().int().min(0),
   userIsSpeaking: z.boolean(),
 

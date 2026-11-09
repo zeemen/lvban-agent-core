@@ -8,7 +8,7 @@
 # njm_zhulin_qixian 之后，三个集成用例里当「指不到的 id」用的那个常量
 # 变成了合法 id——用例照样全绿，但它们测的东西已经不是原来那件了。
 #
-# 用 coverage 而不是 test：同样跑完 49 个文件、788 条用例，额外卡住
+# 用 coverage 而不是 test：同样跑完全部用例，额外卡住
 # vitest.config.ts 里的阈值（lines 80 / functions 80 / branches 75 /
 # statements 80）。那是 testing.md 要的 80% 下限，不卡就会慢慢掉下去。
 # 本机实测 92.9% lines / 86.73% branches。

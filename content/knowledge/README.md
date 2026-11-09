@@ -3,6 +3,16 @@
 规格 03 §5 证据链第三级的长尾资料。自由问答走 BM25 检索这些内容，
 命中的片段进 prompt 当证据（见 `src/knowledge/weknora.ts`）。
 
+> [!WARNING]
+> **2026-11-08：检索这一级当前取不到任何证据，而原因不在语料。**
+> `disable_vector_match: true` 被 WeKnora v0.9.0 以 `HTTP 500 Unsupported query shape`
+> 拒掉（[Tencent/WeKnora#4899](https://github.com/Tencent/WeKnora/issues/4899)，
+> 修复 PR #4908 未合并），触发条件正是「问题生成已关闭的文档库」——本页这两个库都是。
+> 所以**语料写得再好，自由问答现在也引用不到**；排查前先看启动日志那条 K3 自检。
+> 上游 issue 里给的 workaround 是打开问题生成，**我们不用**：那正是下面
+> `summary_enabled` 一节和 [weknora-data-factory#3](https://github.com/zeemen/weknora-data-factory/issues/3)
+> 在挡的污染。出路是把镜像钉回 `v0.8.3` 或等上游。
+
 ## 这些文件是什么
 
 **它们是源，WeKnora 是副本。** 以前反过来：这 14 篇只存在于 WeKnora 的

@@ -25,6 +25,17 @@ export default defineConfig({
       MODEL_ID_COPY: '',
       MODEL_ID_VISION: '',
       MODEL_BASE_URL: '',
+      /*
+       * K3 同理，而且是 2026-11-08 真摔过一次才补上的：这三个键原先没钉，
+       * 于是集成用例会照着开发者 .env 里的地址真打一次 WeKnora。
+       * 它们之所以一直是绿的，只是因为那个地址恰好是死的——连接立刻被拒，
+       * retrievePassages 迅速降级成空集。把端口改对的那一刻，
+       * 活着但慢的后端（约 2 秒才回一个 500）立刻让两条用例超时。
+       * 绿得靠环境里的一个意外，和这次要修的那个故障是同一种病。
+       */
+      WEKNORA_BASE_URL: '',
+      WEKNORA_API_KEY: '',
+      WEKNORA_KB_IDS: '',
     },
     coverage: {
       provider: 'v8',

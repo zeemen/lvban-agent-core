@@ -19,6 +19,29 @@
  * 二、不用它的分数做门槛。只要 BM25 有任意命中，top-1 就被归一到 1.0——
  *     拿「今天停车场在哪」去问，top-1 也是 1.0；vector_threshold 和 keyword_threshold
  *     都拦不住。分数只用来排序，是否可引用由 must_cite 回查决定（规格 03 §5.1）。
+ *
+ * ⚠ 2026-11-08：上面第一条在 WeKnora v0.9.0 上**执行不了**，不是我们的 bug。
+ *
+ * `disable_vector_match: true` 会被后端以 HTTP 500 拒掉：
+ *   ERROR: Unsupported query shape (SQLSTATE XX000)
+ * 原因是 v0.9.0 给「问题生成已关闭」的文档库加了一条排除子句
+ * （source_id/chunk_id 的列对列比较），ParadeDB 拒绝为它和
+ * ORDER BY paradedb.score() 一起出计划 —— Tencent/WeKnora#4899，
+ * 修复 PR #4908 截至今天未合并。我们两个库的 question_generation_config
+ * 都是 {"enabled": false}，正好是触发条件。
+ *
+ * **不要用「打开问题生成」绕过。** 上游 issue 里给的就是这个 workaround，
+ * 但它会往库里写模型生成的问答、而且可被检索到 —— 正是
+ * weknora-data-factory#3 在挡的那种污染。宁可这一级暂时没有证据，
+ * 也不能让模型写的东西混进「资料」。
+ *
+ * 也不要改成混合检索。那条路看着通（HTTP 200），实际是
+ * retainPartialResults 把失败的关键词召回吞掉后只剩向量
+ * （app 日志：`keyword=0`）—— 等于悄悄退回「永远有答案」的那一档，
+ * 而第一条设计选择的全部理由就是不要它。
+ *
+ * 出路只有两个：把镜像钉回 v0.8.3（本设计实测通过的那一版），或等 #4908。
+ * 在那之前这一级是空的，启动自检会在每次启动时报 error（readiness.ts）。
  */
 
 const SEARCH_TIMEOUT_DEFAULT_MS = 800
@@ -81,6 +104,9 @@ export const parsePassages = (payload: unknown): readonly Passage[] => {
   if (!Array.isArray(data)) return []
 
   return data.flatMap((raw: RawHit): readonly Passage[] => {
+    // 元素不是对象就跳过。少这一行，data:[null] 会在 str() 里抛，
+    // 而抛出来的位置离「这是后端回的脏数据」很远，排查要绕一圈
+    if (raw === null || typeof raw !== 'object') return []
     const text = str(raw.content).trim()
     if (text === '') return []
     const knowledgeId = str(raw.knowledge_id)
@@ -120,6 +146,104 @@ export const defaultClient = (env: NodeJS.ProcessEnv = process.env): WeknoraClie
 export const defaultKbMap = (env: NodeJS.ProcessEnv = process.env): KbMap =>
   parseKbMap(env.WEKNORA_KB_IDS ?? '')
 
+/** 检索地址只在这里拼：检索与启动自检共用一份，免得两处各拼一遍、迟早指向两个地方 */
+export const searchUrl = (client: WeknoraClient, kbId: string): string =>
+  `${client.baseUrl}/api/v1/knowledge-bases/${kbId}/hybrid-search`
+
+/**
+ * 一次检索的**整个** HTTP 请求：地址、方法、两个头、请求体、超时。
+ *
+ * 不只共用 buildSearchBody，是因为 2026-11-08 的第一版自检就栽在这上面：
+ * 请求体共用了，外面那层各写一遍，于是自检发的是单库形状、生产发的是跨库形状，
+ * 「探针探的就是生产那条路」这句话在代码里不成立而没人看得出来。
+ * 让两边只能通过这一个函数发请求，那种偏离就不再写得出来。
+ */
+export const searchRequest = (
+  client: WeknoraClient,
+  input: {
+    readonly query: string
+    readonly kbIds: readonly string[]
+    readonly timeoutMs: number
+  },
+): readonly [string, RequestInit] => [
+  searchUrl(client, input.kbIds[0] ?? ''),
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': client.apiKey },
+    body: JSON.stringify(buildSearchBody({
+      query: input.query,
+      limit: client.maxPassages,
+      kbIds: input.kbIds,
+    })),
+    signal: AbortSignal.timeout(input.timeoutMs),
+  },
+]
+
+/** 「K3 配好了吗」只判一处：自检的全部职责是说出生产那条路的实情，不能各有一套门槛 */
+export const isConfigured = (client: WeknoraClient, kbMap: KbMap): boolean =>
+  client.baseUrl !== '' && client.apiKey !== '' && Object.keys(kbMap).length > 0
+
+const errorMessage = (body: Record<string, unknown>): string => {
+  const err = body['error']
+  if (typeof err === 'string') return err
+  if (err !== null && typeof err === 'object' && 'message' in err) {
+    return String((err as { message: unknown }).message)
+  }
+  return ''
+}
+
+/**
+ * 这条响应算什么 —— 本模块对线上格式的唯一判定，检索与启动自检共用一份。
+ *
+ * `rejected` 要盖住三种形状，它们都曾经或可能被当成「查不到」：
+ *   一、非 2xx（我们那个纯 BM25 请求体在 WeKnora v0.9.0 上就是 HTTP 500）。
+ *   二、**HTTP 200 但 body 里 success=false**。旧代码过了 response.ok 这道门，
+ *       再因为 data 不是数组而静静返回空集 —— 故障被伪装成正常结果。
+ *   三、2xx 但响应里根本没有 data 数组：我们看不懂的形状不能当空结果。
+ *
+ * hitCount 是后端给的条数，passages 是其中能引用的那些（空内容的会被丢掉）。
+ * 两个数都要：前者说明这条通道活着，后者才是能进 prompt 的证据。
+ */
+export type SearchOutcome =
+  | { readonly kind: 'rejected'; readonly detail: string }
+  | {
+    readonly kind: 'accepted'
+    readonly hitCount: number
+    readonly passages: readonly Passage[]
+  }
+
+export const judgeSearchResponse = (status: number, payload: unknown): SearchOutcome => {
+  // Array.isArray 这一道不能省：typeof [] 也是 'object'，
+  // 顶层直接给个数组的响应会从下面一路滑成「零命中」
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { kind: 'rejected', detail: `检索 HTTP ${status}，响应不是对象` }
+  }
+
+  const body = payload as Record<string, unknown>
+  const message = errorMessage(body)
+
+  if (status < 200 || status >= 300 || body['success'] === false) {
+    return {
+      kind: 'rejected',
+      detail: `检索 HTTP ${status}${message === '' ? '' : `：${message}`}`,
+    }
+  }
+  /*
+   * 零命中在线上是 data:null，不是空数组——WeKnora 的 Go 侧对
+   * gorm.ErrRecordNotFound 直接 return nil, nil（2026-11-08 实测）。
+   * 把它当成「看不懂的形状」会把正常的查不到误报成故障。
+   */
+  if (!('data' in body) || body['data'] === undefined) {
+    return { kind: 'rejected', detail: `检索 HTTP ${status}，响应里没有 data 字段` }
+  }
+  const data = body['data']
+  if (data === null) return { kind: 'accepted', hitCount: 0, passages: [] }
+  if (!Array.isArray(data)) {
+    return { kind: 'rejected', detail: `检索 HTTP ${status}，data 既不是数组也不是 null` }
+  }
+  return { kind: 'accepted', hitCount: data.length, passages: parsePassages(body) }
+}
+
 /**
  * 取 K3 证据。永不抛错、永不阻塞：没配、挂了、超时，一律当作「这次没有长尾资料」，
  * 回答照常进行。语音优先的产品里，一条引用换不来一次卡顿。
@@ -129,28 +253,34 @@ export const retrievePassages = async (
   client: WeknoraClient = defaultClient(),
   kbMap: KbMap = defaultKbMap(),
 ): Promise<readonly Passage[]> => {
-  if (client.baseUrl === '' || client.apiKey === '') return []
+  if (!isConfigured(client, kbMap)) return []
 
   const kbIds = resolveKbIds(kbMap, input.sceneId)
   if (kbIds.length === 0) return []
 
-  const body = buildSearchBody({ query: input.query, limit: client.maxPassages, kbIds })
-
   try {
-    const response = await fetch(
-      `${client.baseUrl}/api/v1/knowledge-bases/${kbIds[0]}/hybrid-search`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': client.apiKey },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(client.timeoutMs),
-      },
+    const response = await fetch(...searchRequest(client, {
+      query: input.query, kbIds, timeoutMs: client.timeoutMs,
+    }))
+    const outcome = judgeSearchResponse(
+      response.status,
+      await response.json().catch(() => null),
     )
-    if (!response.ok) {
-      console.warn(`[k3] 检索 HTTP ${response.status}，这次不带长尾证据`)
+    /*
+     * 「被拒」和「查不到」分开记。两者在产品里的表现一模一样（模型说不确定），
+     * 但一个是故障、一个是正常结果。混在一起的代价 2026-11-08 付过一次：
+     * K3 整条死着，日志里没有任何能和「库里确实没有」区分开的痕迹。
+     */
+    if (outcome.kind === 'rejected') {
+      console.warn(`[k3] ${outcome.detail}，这次不带长尾证据`)
       return []
     }
-    return parsePassages(await response.json()).slice(0, client.maxPassages)
+    // 「回了东西但一条都引用不了」也要留痕：它和「库里确实没有」同样是空手而归，
+    // 但前者说明后端或语料出了问题，而不是这个问题恰好没有资料
+    if (outcome.hitCount > 0 && outcome.passages.length === 0) {
+      console.warn(`[k3] 命中 ${outcome.hitCount} 条但内容都是空的，这次不带长尾证据`)
+    }
+    return outcome.passages.slice(0, client.maxPassages)
   } catch (error) {
     console.warn(`[k3] 检索失败，这次不带长尾证据：${(error as Error).message}`)
     return []

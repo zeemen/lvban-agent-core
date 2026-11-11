@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from 'vitest'
 import { createClient, type RequestFn, type RequestOptions } from '../../miniprogram/utils/api'
-import { MAX_UPLOAD_BYTES, capturePhoto, type PhotoDeps } from '../../miniprogram/utils/photo'
+import {
+  MAX_UPLOAD_BYTES, QUALITY_LADDER, capturePhoto, type PhotoDeps,
+} from '../../miniprogram/utils/photo'
 
 /**
  * 「拍一下」的客户端两端：拍照取图、以及打到服务端的三个请求。
@@ -38,7 +40,8 @@ describe('capturePhoto —— 规格 02 §4.2 的前端压缩要求', () => {
   })
 
   test('超限就压一次，并且用压过的那张', async () => {
-    const compress = vi.fn(async () => ({ tempFilePath: 'wxfile://small.jpg', size: 4096 }))
+    const compress = vi.fn(async (_input: { src: string; quality: number }) =>
+      ({ tempFilePath: 'wxfile://small.jpg', size: 4096 }))
     const readBase64 = vi.fn(async (path: string) =>
       path === 'wxfile://small.jpg' ? base64Of(4096) : base64Of(MAX_UPLOAD_BYTES + 1))
 
@@ -48,23 +51,76 @@ describe('capturePhoto —— 规格 02 §4.2 的前端压缩要求', () => {
     }))
 
     expect(compress).toHaveBeenCalledOnce()
+    expect(compress.mock.calls[0]?.[0]).toMatchObject({ quality: QUALITY_LADDER[0] })
     expect(got.compressed).toBe(true)
     expect(got.bytes).toBe(4096)
   })
 
   /*
-   * 压过还是超限：必须在这里报错，不能发出去。
+   * 300KB 这道闸比看上去紧。2026-11-10 实测：真实照片缩到长边 1280、q=80
+   * 之后是 187KB 与 236KB——后者已经用掉上限的 78%。展厅里纹理更多
+   * （人群、织锦、玻璃反光），越过 300KB 是会发生的。
+   *
+   * 所以不能压一次就放弃：q=80 不够时降到 60（实测同一张 236KB → 157KB），
+   * 再不够降到 45（→ 114KB）。每一档都从原图压，不是拿压过的再压一遍——
+   * 二次压缩只会多掉一次画质，省不了多少字节。
+   */
+  test('一档不够就降一档，用第一个压到位的结果', async () => {
+    const sizes: Record<number, number> = {
+      80: MAX_UPLOAD_BYTES + 40 * 1024,
+      60: 160 * 1024,
+      45: 110 * 1024,
+    }
+    const compress = vi.fn(async (input: { src: string; quality: number }) => ({
+      tempFilePath: `wxfile://q${input.quality}.jpg`, size: sizes[input.quality] ?? 0,
+    }))
+    const readBase64 = vi.fn(async (path: string) => {
+      const q = Number(/q(\d+)\.jpg/.exec(path)?.[1] ?? 0)
+      return base64Of(sizes[q] ?? MAX_UPLOAD_BYTES + 1)
+    })
+
+    const got = await capturePhoto(deps({
+      choose: async () => ({ tempFilePath: 'wxfile://big.jpg', size: MAX_UPLOAD_BYTES + 99 }),
+      compress, readBase64,
+    }))
+
+    expect(compress).toHaveBeenCalledTimes(2)
+    expect(compress.mock.calls.map((c) => c[0].quality)).toEqual([80, 60])
+    expect(got.bytes).toBe(160 * 1024)
+    expect(got.quality).toBe(60)
+  })
+
+  test('每一档都从原图压，不是拿压过的再压一遍', async () => {
+    const compress = vi.fn(async (_input: { src: string; quality: number }) => ({
+      tempFilePath: 'wxfile://out.jpg', size: MAX_UPLOAD_BYTES + 1,
+    }))
+
+    await capturePhoto(deps({
+      choose: async () => ({ tempFilePath: 'wxfile://origin.jpg', size: MAX_UPLOAD_BYTES + 1 }),
+      compress,
+      readBase64: async () => base64Of(MAX_UPLOAD_BYTES + 1),
+    })).catch(() => undefined)
+
+    for (const call of compress.mock.calls) {
+      expect(call[0].src).toBe('wxfile://origin.jpg')
+    }
+  })
+
+  /*
+   * 整条阶梯走完还是超限：必须在这里报错，不能发出去。
    * 服务端那道 300KB 闸现在也拦 data URI 了，但报错会出现在「按下快门之后」，
    * 而且是一条模型适配层的话——不如在本地说清楚。
    */
-  test('压过仍然超限就报错，并把实际大小说出来', async () => {
+  test('整条阶梯走完仍然超限才报错，并把实际大小说出来', async () => {
     const over = MAX_UPLOAD_BYTES + 50 * 1024
+    const compress = vi.fn(async () => ({ tempFilePath: 'wxfile://still-big.jpg', size: over }))
 
     await expect(capturePhoto(deps({
       choose: async () => ({ tempFilePath: 'wxfile://big.jpg', size: over }),
-      compress: async () => ({ tempFilePath: 'wxfile://still-big.jpg', size: over }),
+      compress,
       readBase64: async () => base64Of(over),
     }))).rejects.toThrow(/KB/)
+    expect(compress).toHaveBeenCalledTimes(QUALITY_LADDER.length)
   })
 
   test('bytes 报的是解码后的字节数，不是 base64 串长', async () => {

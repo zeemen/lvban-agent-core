@@ -13,7 +13,18 @@
 
 export const MAX_UPLOAD_BYTES = 300 * 1024
 export const LONG_EDGE_PX = 1280
-export const JPEG_QUALITY = 80
+
+/**
+ * 压缩质量阶梯。规格 02 §4.2 写的是 q=0.8，这里把它当成**第一档**而不是唯一一档。
+ *
+ * 300KB 这道闸比看上去紧。2026-11-10 用真实照片实测（长边 1280）：
+ *   q=80 → 187KB / 236KB（后者已用掉上限的 78%）
+ *   q=60 → 157KB（52%）
+ *   q=45 → 114KB（37%）
+ * 展厅里纹理比风景照更多（人群、织锦、玻璃反光），越过 300KB 是会发生的。
+ * 压一次就放弃的话，用户只会看到「再拍一张」——而下一张一样大，这是个死胡同。
+ */
+export const QUALITY_LADDER: readonly number[] = [80, 60, 45]
 
 export type ChosenFile = {
   readonly tempFilePath: string
@@ -38,6 +49,8 @@ export type CapturedPhoto = {
   /** 解码后的字节数，不是 base64 串长 */
   readonly bytes: number
   readonly compressed: boolean
+  /** 实际用到的那一档质量；没压过则为 null */
+  readonly quality: number | null
 }
 
 /** base64 串长反推解码字节数，省得为了量个大小再解一遍 */
@@ -48,38 +61,47 @@ const decodedBytes = (base64: string): number => {
 
 const kb = (bytes: number): number => Math.round(bytes / 1024)
 
+const asImageKey = (base64: string): string => `data:image/jpeg;base64,${base64}`
+
 /**
  * 取一张压到 300KB 以内的照片。
  *
- * 只压一次：chooseMedia 已经按 `sizeType: ['compressed']` 出图，还超限说明
- * 原图特别大，再反复压下去用户只会一直等。此时报错而不是硬发——
- * 发出去也会被服务端那道闸拦掉，只是错误要晚几秒、还是一条模型适配层的话。
+ * chooseMedia 已经按 `sizeType: ['compressed']` 出图，够小就直接用，不白压一遍。
+ * 超限则沿 QUALITY_LADDER 逐档降，每一档都**从原图**压：拿压过的再压一遍
+ * 只会多掉一次画质，省不了多少字节。
+ *
+ * 整条阶梯走完还超限才报错，而不是硬发出去——发出去也会被服务端那道闸拦掉，
+ * 只是错误要晚几秒、还是一条模型适配层的话。
  */
 export const capturePhoto = async (deps: PhotoDeps): Promise<CapturedPhoto> => {
   const chosen = await deps.choose()
   if (chosen.size <= MAX_UPLOAD_BYTES) {
     const base64 = await deps.readBase64(chosen.tempFilePath)
     return {
-      imageKey: `data:image/jpeg;base64,${base64}`,
+      imageKey: asImageKey(base64),
       bytes: decodedBytes(base64),
       compressed: false,
+      quality: null,
     }
   }
 
-  const smaller = await deps.compress({
-    src: chosen.tempFilePath,
-    quality: JPEG_QUALITY,
-    compressedWidth: LONG_EDGE_PX,
-  })
-  const base64 = await deps.readBase64(smaller.tempFilePath)
-  const bytes = decodedBytes(base64)
-  if (bytes > MAX_UPLOAD_BYTES) {
-    throw new Error(
-      `这张照片压到 ${kb(bytes)}KB 还是超过 ${kb(MAX_UPLOAD_BYTES)}KB，`
-      + '换个角度离近一点再拍一张',
-    )
+  let last = 0
+  for (const quality of QUALITY_LADDER) {
+    const smaller = await deps.compress({
+      src: chosen.tempFilePath, quality, compressedWidth: LONG_EDGE_PX,
+    })
+    const base64 = await deps.readBase64(smaller.tempFilePath)
+    const bytes = decodedBytes(base64)
+    if (bytes <= MAX_UPLOAD_BYTES) {
+      return { imageKey: asImageKey(base64), bytes, compressed: true, quality }
+    }
+    last = bytes
   }
-  return { imageKey: `data:image/jpeg;base64,${base64}`, bytes, compressed: true }
+
+  throw new Error(
+    `这张照片压到 ${kb(last)}KB 还是超过 ${kb(MAX_UPLOAD_BYTES)}KB，`
+    + '离近一点、少框进一些背景再拍一张',
+  )
 }
 
 /* ─────────────────────── 下面是 wx 那一侧的接线 ─────────────────────── */

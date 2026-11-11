@@ -1,7 +1,27 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   checkSource, decodeBody, htmlToText, isFetchableUrl,
 } from '../../src/content/source-check.js'
+
+/*
+ * DNS 必须在这里封住。
+ *
+ * checkSource 在 fetch 之前要先查「这个公网域名会不会解析到内网」（SSRF 的第二道），
+ * 那是一次真的 dns.lookup。只 stub fetch 的话，用例看着是封闭的，实际每条都在
+ * 解析一个不存在的域名——于是本机 DNS 一慢，这个文件就随机撞 5 秒超时。
+ * 2026-11-09 实测 4 轮挂 1 轮，挂的是「正文里换了行的句子也要算命中」，
+ * 而那条用例跟网络毫无关系。
+ *
+ * 这和 WeKnora 那次是同一种病：用例依赖了一个它没声明的外部东西
+ * （那次是端口，这次是 DNS），而且恰好因为外部环境「正常」而一直绿着。
+ */
+const dnsLookup = vi.hoisted(() => vi.fn())
+vi.mock('node:dns/promises', () => ({ lookup: dnsLookup }))
+
+/** 默认解析到一个公网地址：绝大多数用例不关心 DNS，只是不该真去查 */
+beforeEach(() => {
+  dnsLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }])
+})
 
 /**
  * 采集核验 —— 运营后台里最该自动化的一步。
@@ -76,6 +96,36 @@ describe('不许拿它去打内网（SSRF）', () => {
 
   test('拒绝时给得出理由，面板要显示给人看', () => {
     expect(isFetchableUrl('http://127.0.0.1/x').reason).not.toBe('')
+  })
+
+  /*
+   * 这两条补的是 resolvesToPrivate，在 2026-11-09 之前它一条用例都没有。
+   * 上面那些只覆盖了字面量地址（isFetchableUrl），而真正难防的是
+   * 「域名长得像公网、解析出来却是 127.0.0.1」——那一条分支此前没人测过。
+   */
+  test('域名看着是公网、解析到内网，照样拦，而且不发请求', async () => {
+    dnsLookup.mockResolvedValue([{ address: '127.0.0.1', family: 4 }])
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+
+    const got = await checkSource({ url: 'https://evil.example.com/x', claims: ['a'] })
+
+    expect(got.ok).toBe(false)
+    expect(got.error).toContain('内网')
+    expect(f).not.toHaveBeenCalled()
+    expect(got.claims.every((c) => !c.found)).toBe(true)
+  })
+
+  test('解析不了不算拦住：让 fetch 去报错，它的错误信息更有用', async () => {
+    dnsLookup.mockRejectedValue(new Error('ENOTFOUND'))
+    const f = vi.fn().mockRejectedValue(new Error('getaddrinfo ENOTFOUND nope.example.com'))
+    vi.stubGlobal('fetch', f)
+
+    const got = await checkSource({ url: 'https://nope.example.com/x', claims: ['a'] })
+
+    expect(f).toHaveBeenCalledOnce()
+    expect(got.ok).toBe(false)
+    expect(got.error).toContain('ENOTFOUND')
   })
 })
 

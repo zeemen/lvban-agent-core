@@ -9,6 +9,12 @@
  * 本地联调：开发者工具「详情 → 本地设置」勾选「不校验合法域名」，
  * 否则 http://localhost 会被拦。上线前 baseUrl 必须换成已在
  * 小程序后台配置过的 HTTPS request 合法域名。
+ *
+ * **真机调试要把 localhost 换成这台机器的局域网地址**（`ipconfig getifaddr en0`，
+ * 形如 http://192.168.x.x:8791）。手机上的 localhost 是手机自己，连不到开发机——
+ * 这一条一分钟就能让人白跑一趟。服务端已经监听 0.0.0.0（`src/http/server.ts:67`），
+ * 手机和开发机在同一个 Wi-Fi 下即可；「不校验合法域名」对真机调试同样生效，
+ * 走预览（开发版）则要在手机上先打开调试。
  */
 
 export type ScenePoi = {

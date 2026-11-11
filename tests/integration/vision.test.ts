@@ -364,6 +364,46 @@ describe('点选落位 —— ask_user_pick 之后从候选里选一件（§4.1 
     expect(rows[0]?.source).toBe('user_confirmed')
     expect(rows[0]?.exhibit_id).toBe('njm_cuojinyin_hu')
   })
+
+  /*
+   * 这条路由身兼两职：落位，和往命中率窗口塞一个样本。点选只需要前者。
+   *
+   * 不分开的话，「永远只给 0.5 分、从不自动采纳」的模型会一直显示满命中率——
+   * 用户每次都得自己点，而 §4.3 的熔断永远不响，偏偏那正是最该熔断的形态。
+   * 所以客户端点选时发 sample: false（见 miniprogram/shared/vision-flow.ts）。
+   */
+  test('sample: false —— 落位照做，但这一次不计入命中率窗口', async () => {
+    withConfidence(0.6)
+    const userId = await createUser()
+    const journey = await startJourney({
+      userId, mode: 'light_guide', party: 'solo',
+      sceneId: 'nanjing_museum', trackConsent: 'visited_points_only',
+    })
+
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor/outcome',
+      payload: {
+        corrected: false, journeyId: journey.id,
+        exhibitId: 'njm_cuojinyin_hu', sample: false,
+      },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect((JSON.parse(res.payload) as { samples: number }).samples).toBe(0)
+    const { rows } = await pool.query(
+      'SELECT source FROM location_event WHERE journey_id = $1', [journey.id],
+    )
+    expect(rows).toHaveLength(1)
+  })
+
+  test('省略 sample 时照旧计入：老调用方的行为不变', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/v1/vision/anchor/outcome',
+      payload: { corrected: false },
+    })
+
+    expect((JSON.parse(res.payload) as { samples: number }).samples).toBe(1)
+  })
 })
 
 describe('图片用不了是客户端的问题 —— 不该回 500', () => {
@@ -398,6 +438,23 @@ describe('图片用不了是客户端的问题 —— 不该回 500', () => {
       imageKey: fat, candidates: CANDIDATES,
     }).catch((e: unknown) => e)
     await rm(fat, { force: true })
+
+    expect((error as ModelError).kind).toBe('invalid_input')
+    expect((error as ModelError).message).toContain('300KB')
+  })
+
+  /*
+   * 小程序走的是 data URI——§4.2 要的「直传对象存储、回传 key」还没有。
+   * 而原先 data: 开头是直接放行的，于是「前端压到 300KB 以内」这条要求
+   * 在实际走的那条路上没有任何把关。这条守的就是那条路。
+   */
+  test('超限的 data URI 一样拦，不因为开头是 data: 就放过', async () => {
+    withRealVision()
+
+    const error = await decideVisionAnchor({
+      imageKey: `data:image/jpeg;base64,${Buffer.alloc(320 * 1024, 7).toString('base64')}`,
+      candidates: CANDIDATES,
+    }).catch((e: unknown) => e)
 
     expect((error as ModelError).kind).toBe('invalid_input')
     expect((error as ModelError).message).toContain('300KB')

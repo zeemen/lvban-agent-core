@@ -336,6 +336,15 @@ export const registerRoutes = (app: FastifyInstance): void => {
       journeyId: z.string().uuid().optional(),
       locationEventId: z.string().uuid().optional(),
       exhibitId: z.string().optional(),
+      /*
+       * 这一次要不要计入命中率窗口。省略即计入，所以既有调用方行为不变。
+       *
+       * 分出这个开关的理由：本路由身兼两职——落位，和记一个命中率样本。
+       * 点选只需要落位，系统本来没敢认，没有断言可供纠正。不分开的话，
+       * 「永远只给 0.5 分、从不自动采纳」的模型会一直显示满命中率，
+       * §4.3 的熔断永远不响，而那正是最该被熔断的失败形态。
+       */
+      sample: z.boolean().optional(),
     }).parse(request.body)
     /*
      * 顺序是刻意的：先落位，再撤回，最后才记命中率样本。
@@ -374,7 +383,7 @@ export const registerRoutes = (app: FastifyInstance): void => {
       }
     }
 
-    await recordVisionOutcome(body.corrected)
+    if (body.sample !== false) await recordVisionOutcome(body.corrected)
     return visionHitRate()
   })
 

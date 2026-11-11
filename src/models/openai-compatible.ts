@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { ModelError } from './errors.js'
+import { toImageUrl } from './image-url.js'
 import { postJson } from './http.js'
 import { streamSse, type StreamEvent } from './stream.js'
 import {
@@ -52,31 +52,6 @@ const visionPickSchema = z.object({
 const visionReplySchema = z.object({
   match: visionPickSchema.nullable(),
 })
-
-const MAX_IMAGE_BYTES = 300 * 1024
-
-/** imageKey 解析：http(s) 原样透传；本地路径读成 data URI（便于现场实拍图回归） */
-const toImageUrl = async (imageKey: string): Promise<string> => {
-  if (imageKey.startsWith('http://') || imageKey.startsWith('https://')) return imageKey
-  if (imageKey.startsWith('data:')) return imageKey
-
-  const path = imageKey.startsWith('file://') ? imageKey.slice('file://'.length) : imageKey
-  const bytes = await readFile(path).catch((error: unknown) => {
-    throw new ModelError({
-      kind: 'invalid_input', provider: 'openai-compatible',
-      message: `读不到图片：${path}（imageKey 需为 http(s) URL、data URI 或本地文件路径）`,
-      cause: error,
-    })
-  })
-  if (bytes.byteLength > MAX_IMAGE_BYTES) {
-    // 规格 02 §4.2 要求前端压到 300KB 以内；服务端再挡一道，避免视觉延迟失控
-    throw new ModelError({
-      kind: 'invalid_input', provider: 'openai-compatible',
-      message: `图片 ${Math.round(bytes.byteLength / 1024)}KB 超过 300KB 上限，应在前端压缩后上传`,
-    })
-  }
-  return `data:image/jpeg;base64,${bytes.toString('base64')}`
-}
 
 type Extracted = {
   readonly text: string

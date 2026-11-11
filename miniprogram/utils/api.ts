@@ -1,5 +1,6 @@
 import type { SilentCard } from '../shared/silent-card'
 import type { WireEvent } from '../shared/stream-events'
+import type { OutcomeRequest, VisionAnchorResponse } from '../shared/vision-flow'
 import { createUtf8StreamDecoder } from './utf8'
 import { createSseParser, toWireEvent } from './sse'
 
@@ -89,6 +90,20 @@ export type ArriveResult = {
   readonly card: SilentCard | null
   readonly vetoedBy: string | null
   readonly proactivityReason: string
+}
+
+/** 位置来源与置信度（规格 02 §4.1 室内四件套） */
+export type DeclaredPlace = {
+  readonly locationSource?: 'geofence' | 'user_confirmed' | 'vision_anchor' | 'inferred'
+  readonly locationConfidence?: number
+}
+
+/** 命中率熔断报告（规格 02 §4.3）。样本不足 20 条时不熔断，避免冷启动误判 */
+export type HitRateReport = {
+  readonly samples: number
+  readonly hitRate: number | null
+  readonly threshold: number
+  readonly fallbackActive: boolean
 }
 
 export type Profile = {
@@ -330,8 +345,40 @@ export const createClient = (options: ClientOptions) => {
       return call(`/v1/journeys/${journeyId}/signals`, 'POST', { points })
     },
 
-    arrive(journeyId: string, poiId: string): Promise<ArriveResult> {
-      return call<ArriveResult>(`/v1/journeys/${journeyId}/arrive`, 'POST', { poiId })
+    /**
+     * 到点位。室内要自报位置来源（规格 02 §4.1 四件套）——不报就只能算
+     * `inferred`，置信度按推断打折，拍一下认出来的点位会被当成猜的。
+     * 围栏那条路不传，请求体和以前一样。
+     */
+    arrive(journeyId: string, poiId: string, place?: DeclaredPlace): Promise<ArriveResult> {
+      return call<ArriveResult>(`/v1/journeys/${journeyId}/arrive`, 'POST', {
+        poiId, ...(place ?? {}),
+      })
+    },
+
+    // ───────────────────── 拍一下（规格 02 §4.2，PRD U07）─────────────────────
+
+    /**
+     * 候选集约束识别。候选集由服务端按旅程场景收窄，客户端不传展品清单——
+     * 清单交给客户端决定，就可能在南博拍一张却认出夫子庙的点位来。
+     */
+    visionAnchor(input: {
+      journeyId: string; imageKey: string; zoneHint?: string
+    }): Promise<VisionAnchorResponse> {
+      return call<VisionAnchorResponse>('/v1/vision/anchor', 'POST', {
+        journeyId: input.journeyId,
+        imageKey: input.imageKey,
+        ...(input.zoneHint === undefined ? {} : { zoneHint: input.zoneHint }),
+      })
+    },
+
+    /** 识别回执：既是落位（点选）也是命中率样本（纠正），见 shared/vision-flow.ts */
+    visionOutcome(input: OutcomeRequest): Promise<HitRateReport> {
+      return call<HitRateReport>('/v1/vision/anchor/outcome', 'POST', input)
+    },
+
+    visionHitRate(): Promise<HitRateReport> {
+      return call<HitRateReport>('/v1/vision/hit-rate', 'GET')
     },
 
     /**

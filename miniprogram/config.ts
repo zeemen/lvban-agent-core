@@ -10,6 +10,61 @@
  * 否则 http://localhost 会被拦。上线前 baseUrl 必须换成已在
  * 小程序后台配置过的 HTTPS request 合法域名。
  */
+
+export type ScenePoi = {
+  readonly id: string
+  readonly name: string
+  readonly lat: number
+  readonly lng: number
+}
+
+export type Scene = {
+  readonly id: string
+  readonly name: string
+  readonly desc: string
+  /**
+   * 室内只问「在看哪件」，不问「人在哪」（规格 02 §4.4）。
+   * 所以室内场景没有围栏模拟点：进点位靠「拍一下」，不靠坐标。
+   */
+  readonly indoor: boolean
+  readonly ready: boolean
+  readonly pois: readonly ScenePoi[]
+}
+
+/**
+ * 室外的坐标是围栏占位值（`content/geofences/*.json` 的 `calibrated: false`），
+ * 现场实测后要连同围栏一起替换（规格 02 §9.3）。
+ * 这份清单要和围栏文件里的 poiId 对齐，少一个点，开发者工具里就走不到它。
+ */
+export const SCENES: readonly Scene[] = [
+  {
+    id: 'fuzimiao',
+    name: '夫子庙',
+    desc: '室外 · 秦淮赶考',
+    indoor: false,
+    ready: true,
+    pois: [
+      { id: 'fzm_tianxia_wenshu', name: '天下文枢坊', lat: 32.0203, lng: 118.7889 },
+      { id: 'fzm_dacheng_dian', name: '大成殿', lat: 32.0208, lng: 118.7893 },
+      { id: 'fzm_jiangnan_gongyuan', name: '江南贡院', lat: 32.0211, lng: 118.7905 },
+      { id: 'fzm_mingyuan_lou', name: '明远楼', lat: 32.0214, lng: 118.7908 },
+      { id: 'fzm_wende_qiao', name: '文德桥', lat: 32.0199, lng: 118.7881 },
+      { id: 'fzm_wuyi_xiang', name: '乌衣巷', lat: 32.0196, lng: 118.7885 },
+    ],
+  },
+  {
+    id: 'nanjing_museum',
+    name: '南京博物院',
+    desc: '室内 · 拍一下认展品',
+    indoor: true,
+    ready: true,
+    pois: [],
+  },
+]
+
+export const sceneById = (id: string): Scene | undefined =>
+  SCENES.find((scene) => scene.id === id)
+
 export const config = {
   baseUrl: 'http://localhost:8791',
   /**
@@ -18,12 +73,5 @@ export const config = {
    * 服务端一旦强制鉴权，dev 接口返回 404，这条路自动失效。
    */
   devOpenId: 'miniprogram_dev_user',
-  sceneId: 'fuzimiao',
-  /** 开发者工具里没有真实 GPS，用这些点位模拟到达 */
-  pois: [
-    { id: 'fzm_jiangnan_gongyuan', name: '江南贡院', lat: 32.0211, lng: 118.7905 },
-    { id: 'fzm_mingyuan_lou', name: '明远楼', lat: 32.0214, lng: 118.7908 },
-    { id: 'fzm_wende_qiao', name: '文德桥', lat: 32.0199, lng: 118.7881 },
-    { id: 'fzm_wuyi_xiang', name: '乌衣巷', lat: 32.0196, lng: 118.7885 },
-  ],
+  defaultSceneId: 'fuzimiao',
 } as const

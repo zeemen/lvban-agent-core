@@ -186,6 +186,40 @@ describe('小程序客户端打真实服务端', () => {
     expect(result.text).toContain('号舍')
   })
 
+  /*
+   * 拍一下的整条链路（规格 02 §4.2，PRD U07）。
+   *
+   * 这里刻意不碰 /v1/vision/anchor/outcome：那条路由会往全局的
+   * vision:outcomes 窗口塞样本，相关用例都归 tests/integration/vision.test.ts。
+   * 这条只验「客户端发出的请求能让服务端认出展品并落位」。
+   */
+  test('拍一下：客户端发 data URI，服务端认出展品并落位', async () => {
+    const client = makeClient()
+    const user = await client.createDevUser(`mp_shoot_${Date.now()}_${Math.random()}`)
+    const journey = await client.startJourney({
+      userId: user.userId, mode: 'companion', party: 'solo',
+      sceneId: 'nanjing_museum', trackConsent: 'visited_points_only',
+    })
+
+    const res = await client.visionAnchor({
+      journeyId: journey.journeyId,
+      imageKey: `data:image/jpeg;base64,${Buffer.alloc(2048, 7).toString('base64')}`,
+    })
+
+    expect(res.decision).toBe('auto_accept')
+    const top = res.candidates[0]
+    expect(top?.exhibitId).toMatch(/^njm_/)
+    expect(res.locationEventId).not.toBeNull()
+
+    // 室内落位必须自报来源，不报就被当成 inferred、置信度按推断打折
+    const spoken = await client.arrive(journey.journeyId, top?.exhibitId ?? '', {
+      locationSource: 'vision_anchor', locationConfidence: top?.confidence,
+    })
+
+    expect(spoken.decision).not.toBe('')
+    expect(spoken.spoke || spoken.card !== null).toBe(true)
+  })
+
   test('结束旅程与删除记录都能调通', async () => {
     const { client, journeyId } = await startJourney()
 

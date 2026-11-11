@@ -1,8 +1,14 @@
-import { config } from '../../config'
-import type { LvbanClient, Profile } from '../../utils/api'
+import { SCENES, config, sceneById, type ScenePoi } from '../../config'
+import {
+  nextStep, openSample, pickedOutcome, rejectedAllOutcome,
+  settleOnCorrection, settleOnMoveOn,
+  type PendingSample, type VisionAnchorResponse, type VisionCandidate,
+} from '../../shared/vision-flow'
+import type { ArriveResult, DeclaredPlace, HitRateReport, LvbanClient, Profile } from '../../utils/api'
 import { currentSession, getClient, requireSession } from '../../utils/app-client'
 import { createAudioQueue, wxAudioContextFactory, type AudioQueue } from '../../utils/audio'
 import { wxStorage } from '../../utils/auth'
+import { capturePhoto, wxPhotoDeps } from '../../utils/photo'
 import {
   createNudgeStore, journeyModeFrom, modeLabel, shouldSuggestProfile,
   voiceEnabledFor, type NudgeStore,
@@ -11,10 +17,13 @@ import {
 /**
  * 行中页 —— M3 的主链路。
  *
- * 授权 → 开始旅程 → 到达点位 → 问一句（流式 + 垫音 + 语音）→ 结束旅程。
+ * 授权 → 开始旅程 → 到达点位 / 拍一下 → 问一句（流式 + 垫音 + 语音）→ 结束旅程。
  *
- * 开发者工具里没有真实 GPS，所以点位用按钮模拟「走到这里」，
- * 走的仍是服务端真实的围栏判定（两次定位上报 + 去抖 + 最小停留）。
+ * 室外（夫子庙）靠围栏：开发者工具里没有真实 GPS，所以点位用按钮模拟
+ * 「走到这里」，走的仍是服务端真实的围栏判定（两次定位上报 + 去抖 + 最小停留）。
+ *
+ * 室内（南博）不做空间定位（规格 02 §4.4）：不问「人在哪」，只问「在看哪件」，
+ * 所以这里没有坐标模拟，进点位靠「拍一下」（§4.2，PRD U07）。
  */
 
 type TrackConsent = 'none' | 'visited_points_only' | 'full_track'
@@ -39,7 +48,17 @@ type PageData = {
   busy: boolean
   timing: string
   ttsProvider: string
-  pois: typeof config.pois
+  sceneId: string
+  sceneName: string
+  indoor: boolean
+  pois: readonly ScenePoi[]
+  /** ask_user_pick：候选交给用户点，不替他选第一个 */
+  picks: readonly VisionCandidate[]
+  /** auto_accept 之后留着的纠正入口（PRD U07「识别结果可纠正」） */
+  correctable: boolean
+  /** 命中率跌破阈值：主入口让位给「问一句」（规格 02 §4.3） */
+  fallbackActive: boolean
+  fallbackHint: string
   profileLoaded: boolean
   profileHint: string
   suggestProfile: boolean
@@ -52,12 +71,16 @@ let audio: AudioQueue | null = null
 let userId = ''
 let profile: Profile | null = null
 let nudge: NudgeStore | null = null
+/** 挂起的命中率样本：一次识别只结算一次，见 shared/vision-flow.ts */
+let pendingSample: PendingSample = null
 
 const CONSENT_LABELS: Record<TrackConsent, string> = {
   none: '本次不保存轨迹',
   visited_points_only: '仅保存访问点位',
   full_track: '保存完整轨迹',
 }
+
+const FALLBACK_SCENE = SCENES[0] as (typeof SCENES)[number]
 
 Page<PageData, WechatMiniprogram.Page.CustomOption>({
   data: {
@@ -72,7 +95,14 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     busy: false,
     timing: '',
     ttsProvider: '',
-    pois: config.pois,
+    sceneId: FALLBACK_SCENE.id,
+    sceneName: FALLBACK_SCENE.name,
+    indoor: FALLBACK_SCENE.indoor,
+    pois: FALLBACK_SCENE.pois,
+    picks: [],
+    correctable: false,
+    fallbackActive: false,
+    fallbackHint: '',
     profileLoaded: false,
     profileHint: '',
     suggestProfile: false,
@@ -81,9 +111,14 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     voiceOn: true,
   },
 
-  onLoad() {
+  onLoad(query: Record<string, string | undefined>) {
     client = getClient()
     nudge = createNudgeStore(wxStorage())
+    const scene = sceneById(query.sceneId ?? config.defaultSceneId) ?? FALLBACK_SCENE
+    this.setData({
+      sceneId: scene.id, sceneName: scene.name,
+      indoor: scene.indoor, pois: scene.pois,
+    })
     audio = createAudioQueue({
       createContext: wxAudioContextFactory,
       onError: (src) => {
@@ -180,7 +215,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
         userId,
         mode,
         party: 'solo',
-        sceneId: config.sceneId,
+        sceneId: this.data.sceneId,
         trackConsent: this.data.trackConsent,
       })
       this.setData({
@@ -188,13 +223,16 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
         journeyId: journey.journeyId,
         lines: [{
           kind: 'system',
-          text: `旅程已开始 · ${modeLabel(mode)}`
+          text: `${this.data.sceneName} · 旅程已开始 · ${modeLabel(mode)}`
             + ` · ${CONSENT_LABELS[this.data.trackConsent as TrackConsent]}`,
-          note: this.data.voiceOn
-            ? '只有现在开始之后才会采集位置；随时可以结束并一键删除'
-            : '按你建档选的只显示文字、不放声音；位置也只在现在之后才采集',
+          note: this.data.indoor
+            ? '室内不定位，也不猜你在哪：拍一下你正在看的那件，或者直接问我一句'
+            : (this.data.voiceOn
+              ? '只有现在开始之后才会采集位置；随时可以结束并一键删除'
+              : '按你建档选的只显示文字、不放声音；位置也只在现在之后才采集'),
         }],
       })
+      void this.refreshHitRate()
     } catch (error) {
       this.appendLine({ kind: 'system', text: `开始失败：${(error as Error).message}` })
     } finally {
@@ -203,15 +241,61 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
   },
 
   /**
+   * 识别命中率低于阈值就把主入口让给「问一句」（规格 02 §4.3、PRD U07）。
+   * 开局先读一次：熔断是运行时状态，不该等用户先拍一张才发现已经降级。
+   */
+  async refreshHitRate() {
+    if (client === null) return
+    try {
+      this.applyHitRate(await client.visionHitRate())
+    } catch {
+      // 读不到就按没降级走：这只是入口排序，不该拦住整条链路
+    }
+  },
+
+  applyHitRate(report: HitRateReport) {
+    this.setData({
+      fallbackActive: report.fallbackActive,
+      fallbackHint: report.fallbackActive
+        ? `最近 ${report.samples} 次识别命中率 ${report.hitRate ?? '—'}，`
+          + `低于 ${report.threshold}：先用「问一句」更省事`
+        : '',
+    })
+  },
+
+  /** 把三档决策共用的那几行渲染收在一处（规格 02 §7.1 的三值） */
+  renderArrival(result: ArriveResult, placeName: string) {
+    if (result.spoke && result.text !== null) {
+      this.appendLine({ kind: 'agent', text: result.text, note: `到达 ${placeName}` })
+      return
+    }
+    if (result.card !== null) {
+      // 分不够开口、或者主动频次到了：出气泡，不出声（规格 02 §7.1）
+      this.appendLine({
+        kind: 'card',
+        text: result.card.hint,
+        audioKey: result.card.audioKey ?? undefined,
+        note: `到了${placeName}，没出声：${result.proactivityReason}`,
+      })
+      return
+    }
+    this.appendLine({
+      kind: 'system',
+      text: `到了${placeName}，但旅伴选择不开口：${result.vetoedBy ?? result.proactivityReason}`,
+    })
+  },
+
+  /**
    * 模拟走到某个点位。
    * 上报两次定位是为了满足服务端围栏的去抖与最小停留条件——
    * 这里不绕过服务端判定，否则测到的就不是真实链路。
    */
   async onArrive(e: WechatMiniprogram.BaseEvent<Record<string, never>, { id: string }>) {
-    const poi = config.pois.find((p) => p.id === e.currentTarget.dataset.id)
+    const poi = this.data.pois.find((p) => p.id === e.currentTarget.dataset.id)
     const journeyId = this.data.journeyId
     if (client === null || poi === undefined || journeyId === null || this.data.busy) return
 
+    await this.settleMoveOn()
     this.setData({ busy: true })
     try {
       const now = Date.now()
@@ -220,29 +304,156 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
         { lat: poi.lat, lng: poi.lng, accuracyM: 14, at: new Date(now + 25_000).toISOString(), speedMps: 0.3 },
       ])
       const result = await client.arrive(journeyId, poi.id)
-      this.setData({ currentPoi: poi.id, currentPoiName: poi.name })
-
-      if (result.spoke && result.text !== null) {
-        this.appendLine({ kind: 'agent', text: result.text, note: `到达 ${poi.name}` })
-      } else if (result.card !== null) {
-        // 分不够开口、或者主动频次到了：出气泡，不出声（规格 02 §7.1）
-        this.appendLine({
-          kind: 'card',
-          text: result.card.hint,
-          audioKey: result.card.audioKey ?? undefined,
-          note: `到了${poi.name}，没出声：${result.proactivityReason}`,
-        })
-      } else {
-        this.appendLine({
-          kind: 'system',
-          text: `到了${poi.name}，但旅伴选择不开口：${result.vetoedBy ?? result.proactivityReason}`,
-        })
-      }
+      this.setData({ currentPoi: poi.id, currentPoiName: poi.name, correctable: false })
+      this.renderArrival(result, poi.name)
     } catch (error) {
       this.appendLine({ kind: 'system', text: `到达失败：${(error as Error).message}` })
     } finally {
       this.setData({ busy: false })
     }
+  },
+
+  /* ───────────────── 拍一下（规格 02 §4.2，PRD U07）───────────────── */
+
+  /**
+   * 拍一张，让服务端在本场景的候选里认。
+   *
+   * 候选集由服务端按旅程场景收窄，客户端不传展品清单：清单交给客户端决定，
+   * 就可能在南博拍一张却认出夫子庙的点位来（§4.2 候选集约束是命中率的关键）。
+   */
+  async onShoot() {
+    const journeyId = this.data.journeyId
+    if (client === null || journeyId === null || this.data.busy) return
+
+    await this.settleMoveOn()
+    this.setData({ busy: true, picks: [], correctable: false })
+    try {
+      const photo = await capturePhoto(wxPhotoDeps())
+      const res = await client.visionAnchor({ journeyId, imageKey: photo.imageKey })
+      this.applyVision(res, journeyId)
+    } catch (error) {
+      const message = (error as Error).message
+      // 用户自己取消了，不是失败，不该在对话里留一行红字
+      if (!message.includes('cancel')) {
+        this.appendLine({ kind: 'system', text: `识别失败：${message}` })
+      }
+    } finally {
+      this.setData({ busy: false })
+    }
+  },
+
+  async applyVision(res: VisionAnchorResponse, journeyId: string) {
+    this.applyHitRate({
+      samples: 0, hitRate: null, threshold: 0, fallbackActive: res.fallbackActive,
+    })
+    if (res.fallbackActive && res.fallbackReason !== null) {
+      this.setData({ fallbackHint: res.fallbackReason })
+    }
+
+    const step = nextStep(res)
+    pendingSample = openSample(step, journeyId)
+
+    if (step.kind === 'ask') {
+      this.appendLine({ kind: 'system', text: step.hint })
+      return
+    }
+    if (step.kind === 'pick') {
+      this.setData({ picks: step.candidates })
+      return
+    }
+
+    if (step.landingRejected !== null) {
+      this.appendLine({
+        kind: 'system',
+        text: `认出来了，但这次没记上：${step.landingRejected}`,
+      })
+    }
+    this.setData({ correctable: true })
+    await this.enterExhibit(step.pick, {
+      locationSource: 'vision_anchor', locationConfidence: step.pick.confidence,
+    })
+  },
+
+  /**
+   * 落到某一件展品上。
+   *
+   * 室内不上报坐标：§4.4 明说不写「人在哪」。来源必须自报，
+   * 不报就被当成 inferred、置信度按推断打折，拍一下认出来的点位
+   * 会因此过不了 §7.2 的 0.6 否决线。
+   */
+  async enterExhibit(pick: VisionCandidate, place: DeclaredPlace) {
+    const journeyId = this.data.journeyId
+    if (client === null || journeyId === null) return
+    this.setData({ currentPoi: pick.exhibitId, currentPoiName: pick.name })
+    const result = await client.arrive(journeyId, pick.exhibitId, place)
+    this.renderArrival(result, pick.name)
+  },
+
+  /** ask_user_pick 之后点了一件：要落位，但这一次不计入命中率（见 vision-flow） */
+  async onPick(e: WechatMiniprogram.BaseEvent<Record<string, never>, { id: string }>) {
+    const pick = this.data.picks.find((c) => c.exhibitId === e.currentTarget.dataset.id)
+    const journeyId = this.data.journeyId
+    if (client === null || pick === undefined || journeyId === null || this.data.busy) return
+
+    this.setData({ busy: true, picks: [] })
+    try {
+      await client.visionOutcome(pickedOutcome(journeyId, pick.exhibitId))
+      // user_confirmed 的置信度由服务端定成 1.0，客户端报多少都不作数
+      await this.enterExhibit(pick, { locationSource: 'user_confirmed' })
+    } catch (error) {
+      this.appendLine({ kind: 'system', text: `记下来失败：${(error as Error).message}` })
+    } finally {
+      this.setData({ busy: false })
+    }
+  },
+
+  /** 「都不是」：没有落位要做，但这次识别确实没成，要计入命中率 */
+  async onRejectAll() {
+    const journeyId = this.data.journeyId
+    if (client === null || journeyId === null) return
+    pendingSample = null
+    this.setData({ picks: [] })
+    try {
+      this.applyHitRate(await client.visionOutcome(rejectedAllOutcome(journeyId)))
+    } catch {
+      // 命中率没记上不该影响用户接着问
+    }
+    this.appendLine({ kind: 'system', text: '那就直接问我一句——你看到的是什么样子？' })
+  },
+
+  /**
+   * 「不是这件」：撤回认错的那条落位，并把这次记成纠正。
+   * 撤回是必须的，否则语义足迹里会留下一件其实没看过的展品（§4.4）。
+   */
+  async onNotThis() {
+    const out = settleOnCorrection(pendingSample)
+    pendingSample = null
+    this.setData({ correctable: false, currentPoi: null, currentPoiName: '' })
+    if (client === null || out === null) return
+    try {
+      this.applyHitRate(await client.visionOutcome(out))
+      this.appendLine({ kind: 'system', text: '已撤回刚才那条记录。再拍一张，或者直接问我。' })
+    } catch (error) {
+      this.appendLine({ kind: 'system', text: `撤回失败：${(error as Error).message}` })
+    }
+  },
+
+  /**
+   * 用户没纠正就往下走了：上一次识别就此算命中（规格 02 §4.3）。
+   *
+   * 不在落位当场记，是因为 /outcome 没有撤销样本的办法：当场乐观记一笔、
+   * 用户再纠正时又记一笔，一次识别就成了半命中半纠正，熔断该响时晚响。
+   */
+  async settleMoveOn() {
+    const out = settleOnMoveOn(pendingSample)
+    pendingSample = null
+    if (client === null || out === null) return
+    try {
+      this.applyHitRate(await client.visionOutcome(out))
+    } catch {
+      // 记不上命中率不该拦住用户的下一步
+    }
+    this.setData({ correctable: false })
   },
 
   /** 问一句：流式 + 垫音 + 逐句语音 */
@@ -251,6 +462,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     const journeyId = this.data.journeyId
     if (client === null || text === '' || journeyId === null || this.data.busy) return
 
+    void this.settleMoveOn()
     this.appendLine({ kind: 'user', text })
     this.setData({ input: '', busy: true, timing: '' })
 
@@ -319,11 +531,12 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
   async onEnd() {
     const journeyId = this.data.journeyId
     if (client === null || journeyId === null) return
+    await this.settleMoveOn()
     audio?.clear()
     try {
       await client.endJourney(journeyId)
       this.appendLine({ kind: 'system', text: '旅程已结束，行后蒸馏已排队' })
-      this.setData({ journeyId: null, consentGiven: false })
+      this.setData({ journeyId: null, consentGiven: false, picks: [], correctable: false })
       // 规格 01 §7.2：结束之后必须直接看到「记了什么」与一键删除，
       // 不能把回顾折叠进二级菜单。
       // 用 redirectTo 而不是 navigateTo：旅程已经结束，留在返回栈里的是一个
@@ -344,7 +557,11 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
       confirmColor: '#b4472a',
     })
     if (!confirm.confirm) return
+    pendingSample = null
     await client.deleteJourney(journeyId)
-    this.setData({ journeyId: null, consentGiven: false, lines: [], currentPoi: null })
+    this.setData({
+      journeyId: null, consentGiven: false, lines: [],
+      currentPoi: null, picks: [], correctable: false,
+    })
   },
 })

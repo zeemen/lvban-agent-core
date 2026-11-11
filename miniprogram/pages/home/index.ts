@@ -1,4 +1,4 @@
-import { config } from '../../config'
+import { SCENES } from '../../config'
 import type { JourneySummary } from '../../utils/api'
 import { currentSession, getClient } from '../../utils/app-client'
 
@@ -24,14 +24,9 @@ type PageData = {
   scenes: typeof SCENES
 }
 
-const SCENES = [
-  { id: 'fuzimiao', name: '夫子庙', desc: '室外 · 秦淮赶考', ready: true },
-  { id: 'nanjing_museum', name: '南京博物院', desc: '室内 · 视觉寻宝', ready: false },
-] as const
-
-const SCENE_NAMES: Record<string, string> = {
-  fuzimiao: '夫子庙', nanjing_museum: '南京博物院',
-}
+const SCENE_NAMES: Record<string, string> = Object.fromEntries(
+  SCENES.map((scene) => [scene.id, scene.name]),
+)
 
 const ACTIVE_STATES = ['ACTIVE', 'IDLE', 'CONSENT']
 
@@ -82,12 +77,8 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
       wx.showToast({ title: '这个场景还没开放', icon: 'none' })
       return
     }
-    if (sceneId !== config.sceneId) {
-      // 行中页目前只带了夫子庙的模拟点位，别让用户进到一个空页面
-      wx.showToast({ title: '这个场景还没开放', icon: 'none' })
-      return
-    }
-    wx.navigateTo({ url: '/pages/journey/index' })
+    // 场景带到行中页：室外给围栏模拟点，室内给「拍一下」
+    wx.navigateTo({ url: `/pages/journey/index?sceneId=${sceneId}` })
   },
 
   onContinue() {

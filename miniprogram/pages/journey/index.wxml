@@ -2,7 +2,7 @@
 
   <!-- 授权：规格 01 §2.3，定位与轨迹保存分别说明、分别选择 -->
   <view wx:if="{{!consentGiven}}" class="card consent">
-    <view class="title">开始今天的旅程</view>
+    <view class="title">开始今天的旅程<text class="sub">{{sceneName}}</text></view>
     <view class="hint">
       只有现在开始之后才会采集位置。行程结束时可以看到记了什么，并一键删除。
     </view>
@@ -37,7 +37,8 @@
 
   <!-- 行中 -->
   <block wx:else>
-    <view class="card pois">
+    <!-- 室外靠围栏：开发者工具没有真实 GPS，点一下模拟走到 -->
+    <view wx:if="{{!indoor}}" class="card pois">
       <view class="label">走到哪儿了<text class="sub">（开发者工具没有真实 GPS，点一下模拟走到）</text></view>
       <view class="poi-row">
         <button
@@ -45,6 +46,38 @@
           class="poi {{currentPoi === item.id ? 'active' : ''}}"
           data-id="{{item.id}}" bindtap="onArrive" disabled="{{busy}}"
         >{{item.name}}</button>
+      </view>
+    </view>
+
+    <!--
+      室内不问「人在哪」，只问「在看哪件」（规格 02 §4.4）。
+      命中率跌破阈值时这一档让位给「问一句」（§4.3）：按钮降级成次要样式，
+      并把原因说出来，而不是悄悄把它藏起来。
+    -->
+    <view wx:if="{{indoor}}" class="card shoot">
+      <view class="label">在看哪一件<text class="sub">（室内不定位，也不猜你在哪）</text></view>
+      <button
+        class="{{fallbackActive ? 'ghost' : 'primary'}}"
+        bindtap="onShoot" disabled="{{busy}}"
+      >拍一下这件展品</button>
+      <view wx:if="{{fallbackHint}}" class="hint warn">{{fallbackHint}}</view>
+
+      <!-- ask_user_pick：候选交给用户点，不替他选第一个 -->
+      <block wx:if="{{picks.length}}">
+        <view class="label">不太确定，是这几件里的哪一件？</view>
+        <view class="poi-row">
+          <button
+            wx:for="{{picks}}" wx:key="exhibitId"
+            class="poi" data-id="{{item.exhibitId}}" bindtap="onPick" disabled="{{busy}}"
+          >{{item.name}}</button>
+        </view>
+        <text class="reject" bindtap="onRejectAll">都不是</text>
+      </block>
+
+      <!-- PRD U07：识别结果可纠正。纠正要撤回认错的那条落位 -->
+      <view wx:if="{{correctable}}" class="correct">
+        <text class="hint">认的是{{currentPoiName}}。</text>
+        <text class="reject" bindtap="onNotThis">不是这件</text>
       </view>
     </view>
 

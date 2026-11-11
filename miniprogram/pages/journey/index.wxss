@@ -52,3 +52,12 @@
 .nudge-actions { display: flex; gap: 32rpx; margin-top: 12rpx; }
 .nudge-go { font-size: 26rpx; color: #8a5a2b; text-decoration: underline; }
 .nudge-skip { font-size: 26rpx; color: #9a9088; }
+
+/* 拍一下（规格 02 §4.2，PRD U07） */
+.shoot { display: flex; flex-direction: column; gap: 16rpx; }
+.shoot .primary, .shoot .ghost { margin: 0; }
+/* 「都不是」「不是这件」：刻意做成次要样式，但一眼能找到——
+   找不到纠正入口，命中率就只剩模型自评分了（§4.3） */
+.reject { font-size: 26rpx; color: #8a5a2b; text-decoration: underline; align-self: flex-start; }
+.correct { display: flex; align-items: baseline; gap: 16rpx; flex-wrap: wrap; }
+.title .sub { margin-left: 12rpx; font-size: 24rpx; color: #9a8f80; font-weight: normal; }

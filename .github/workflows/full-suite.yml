@@ -31,7 +31,9 @@ concurrency:
 jobs:
   suite:
     name: 迁移 + 全量 + 覆盖率阈值
-    runs-on: ubuntu-latest
+    # 钉死 runner 的理由同 content-gate.yml。这个 job 还多一层：它跑服务
+    # 容器，受宿主的 Docker 版本影响比门禁大，所以更不该跟着 latest 漂。
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     # 镜像、口令、端口都跟 docker-compose.yml 与 .env.example 对齐。

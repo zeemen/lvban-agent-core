@@ -40,7 +40,13 @@ concurrency:
 jobs:
   gate:
     name: 出厂标准
-    runs-on: ubuntu-latest
+    # runner 钉死，不用 ubuntu-latest：2026-11-15 的 run 报了「ubuntu-latest
+    # 从 2026-10-19 起开始迁往 Ubuntu 26」（actions/runner-images#14748）。
+    # latest 翻版的那天，系统库、Docker、默认工具链会一起变，CI 红起来却跟
+    # 当次提交无关——这个项目最不想要的就是这种查不出归因的红。
+    # 代价是这一行将来要有人动：24.04 自己也会下线，GitHub 会先在 run 里报
+    # 废弃告警，看到了再升，别等它直接消失。
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     # 三个 action 都按大版本钉。第一次跑（run 41263159720）全绿，但报了

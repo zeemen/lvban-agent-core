@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url'
-import type { PlanDecision } from '../planner/decide.js'
+import { VOICE_BY_REGISTER, type PlanDecision } from '../planner/decide.js'
 import { checkRegister, hasHedgeMarker } from '../planner/register-guard.js'
 import { renderFromAnchor } from '../planner/render.js'
 import { findGaps, loadKbDocs } from './kb-docs.js'
@@ -67,6 +67,33 @@ const MUST_CITE_PATTERNS: readonly { readonly label: string; readonly pattern: R
   { label: '尺寸', pattern: /\d+\s*(厘米|cm|米|毫米|公斤|克|斤)/ },
   { label: '出土地点', pattern: /出土于|发现于|出自.{2,8}(墓|遗址)/ },
 ]
+
+/**
+ * 开场钩子与讲解的字面重合度 —— 字符二元组的 Dice 系数。
+ *
+ * 为什么用二元组而不是编辑距离：要判的是「两句话在说同一件事」，不是改了
+ * 几个字。二元组对语序不敏感、纯函数、没有 DP，而且在现有 8 个锚点上把两类
+ * 分得很开——各说一面的 ≤0.39，说同一句的 ≥0.59。阈值落在这道空档中间。
+ *
+ * 标点不计：差一个句号不算两句话。
+ */
+const PUNCTUATION = /[。，、；：！？「」『』（）()\s]/g
+
+const charBigramSimilarity = (a: string, b: string): number => {
+  const gramsOf = (text: string): ReadonlySet<string> => {
+    const t = text.replace(PUNCTUATION, '')
+    return new Set(
+      Array.from({ length: Math.max(t.length - 1, 0) }, (_, i) => t.slice(i, i + 2)),
+    )
+  }
+  const left = gramsOf(a)
+  const right = gramsOf(b)
+  if (left.size === 0 || right.size === 0) return 0
+  const shared = [...left].filter((gram) => right.has(gram)).length
+  return (2 * shared) / (left.size + right.size)
+}
+
+const HOOK_ECHO_THRESHOLD = 0.5
 
 export const lintAnchor = (
   anchor: Anchor, anchors: ReadonlyMap<string, Anchor>,
@@ -147,6 +174,38 @@ export const lintAnchor = (
       severity: 'warn',
       rule: 'next_action/dangling',
       detail: `nextAction 指向「${suggest}」，但它既不是锚点 id 也不是任何锚点的点位 id`,
+    })
+  }
+
+  /*
+   * 开场钩子不要和讲解说同一句话。
+   *
+   * 轻导览这档后果最重：它的 length 恒为 short（decide.ts），而 render.ts 的
+   * LENGTH_SEGMENT_CAP.short 是 1 段——explanation 是唯一会出声的那一段。
+   * 钩子走的是另一条出口（静默卡片，soft-hint.ts，Top 30 还预合成了音频），
+   * 两处要是同一句，轻导览用户在这件展品上听到的就只有一句定位式介绍，
+   * 没有解释。同游/亲子两档也查：那两档钩子与讲解会拼进同一段话
+   * （render.ts 里 question / observation 开场那两条分支）。
+   *
+   * 门禁原先看不见这件事：renderPaths() 只枚举 renderFromAnchor 的六条路径，
+   * 卡片那条出口从来没进过检查，所以近乎重复的一对能一路绿着过。
+   *
+   * 只报警告：这是内容质量，不是契约违反——拦不住上线，但得有人看见。
+   */
+  for (const voice of Object.values(VOICE_BY_REGISTER)) {
+    const hook = e.openingHook[voice]
+    const explanation = e.explanation[voice]
+    if (hook === null || explanation === null) continue
+
+    const ratio = charBigramSimilarity(hook, explanation)
+    if (ratio < HOOK_ECHO_THRESHOLD) continue
+
+    findings.push({
+      anchorId: anchor.anchorId,
+      severity: 'warn',
+      rule: 'content/hook_echoes_explanation',
+      detail: `${voice} 档的开场钩子与讲解相似度 ${ratio.toFixed(2)}`
+        + `（阈值 ${HOOK_ECHO_THRESHOLD}）：卡片与讲解在说同一句`,
     })
   }
 

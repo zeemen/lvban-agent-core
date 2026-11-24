@@ -24,11 +24,15 @@ const signedReview: Anchor['review'] = {
 }
 
 /** 最小可用锚点。要素都填成合法值，这样测出来的只会是被测那一条规则 */
+type Voiced = Anchor['elements']['openingHook']
+
 const anchorOf = (patch: {
   readonly anchorId: string
   readonly poiId?: string
   readonly exhibitId?: string
   readonly suggest?: string | null
+  readonly hook?: Voiced
+  readonly explanation?: Voiced
 }): Anchor => ({
   anchorId: patch.anchorId,
   name: '测试锚点',
@@ -40,10 +44,10 @@ const anchorOf = (patch: {
   review: signedReview,
   k1Sources: [{ title: '测试来源' }],
   elements: {
-    openingHook: { companion: '你看这个。', child: null, light: null },
+    openingHook: patch.hook ?? { companion: '你看这个。', child: null, light: null },
     observation: { companion: null, child: null, light: null },
     question: { companion: null, child: null, light: null },
-    explanation: { companion: null, child: null, light: null },
+    explanation: patch.explanation ?? { companion: null, child: null, light: null },
     story: null,
     connection: { curriculum: null, presentDay: null },
     memoryLink: { template: '你上次在{place}问过{topic}。' },
@@ -107,6 +111,65 @@ describe('语料「关联锚点」认的词表', () => {
 
     expect(known).toContain('fzm_jiangnan_gongyuan')
     expect(known).toContain('fzm_jiangnan_gongyuan_haoshe')
+  })
+})
+
+/*
+ * 这一条查的是内容质量，所以反例比正例重要：规则写错了只会安静地一条
+ * 都不报，而「0 警告」和「规则没生效」在门禁输出里长得一模一样。
+ */
+describe('开场钩子不要和讲解说同一句话', () => {
+  const voiced = (light: string | null): Voiced => ({ companion: null, child: null, light })
+
+  const pair = (hook: string | null, explanation: string | null): Anchor => anchorOf({
+    anchorId: 'fzm_a',
+    poiId: 'fzm_a_poi',
+    hook: voiced(hook),
+    explanation: voiced(explanation),
+  })
+
+  const ECHO = 'content/hook_echoes_explanation'
+
+  test('两句几乎一致：报警告', () => {
+    const a = pair(
+      '大成殿是夫子庙主殿，大殿七间，藏有反映孔子生平和教育思想的彩色壁画。',
+      '大成殿是夫子庙主殿，大殿七间，藏有反映孔子生平和教育思想的彩色壁画，具体陈列以现场说明为准。',
+    )
+
+    expect(rulesOf(a, mapOf(a))).toContain(ECHO)
+  })
+
+  test('钩子答「这是什么」、讲解答「凭什么值得看」：不报', () => {
+    const a = pair(
+      '这是一件战国时期的错金银工艺青铜壶。',
+      '错金银工艺指在器物表面刻槽后嵌入金银丝并打磨齐平的装饰技法。',
+    )
+
+    expect(rulesOf(a, mapOf(a))).not.toContain(ECHO)
+  })
+
+  /*
+   * 规格 04 §4.5 里 observation.light 与 question.light 本来就是 null，
+   * 空栏是正常状态。把「没写」判成「重复」，是比漏报更费时间的误报。
+   */
+  test('一侧留空：不报', () => {
+    const a = pair('这里是号舍。', null)
+
+    expect(rulesOf(a, mapOf(a))).not.toContain(ECHO)
+  })
+
+  test('只有一个字的差别也算同一句 —— 标点不计', () => {
+    const a = pair('乌衣巷位于秦淮河南岸。', '乌衣巷位于秦淮河南岸')
+
+    expect(rulesOf(a, mapOf(a))).toContain(ECHO)
+  })
+
+  test('真实内容里 njm_cuojinyin_hu 不被报 —— 它是写对的那个样板', async () => {
+    const anchors = await loadAnchors()
+    const hu = anchors.get('njm_cuojinyin_hu')
+
+    expect(hu).toBeDefined()
+    expect(rulesOf(hu as Anchor, anchors)).not.toContain(ECHO)
   })
 })
 

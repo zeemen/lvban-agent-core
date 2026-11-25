@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { describe, expect, test } from 'vitest'
-import { knownAnchorIds, lintAnchor } from '../../src/content/lint.js'
+import { knownAnchorIds, lintAnchor, type Finding } from '../../src/content/lint.js'
 import { loadAnchors, type Anchor } from '../../src/content/loader.js'
 
 /**
@@ -60,6 +60,10 @@ const mapOf = (...list: readonly Anchor[]): ReadonlyMap<string, Anchor> =>
 
 const rulesOf = (anchor: Anchor, map: ReadonlyMap<string, Anchor>): readonly string[] =>
   lintAnchor(anchor, map).map((f) => f.rule)
+
+const findingOf = (
+  anchor: Anchor, map: ReadonlyMap<string, Anchor>, rule: string,
+): Finding | undefined => lintAnchor(anchor, map).find((f) => f.rule === rule)
 
 describe('nextAction 指的下一站得真的存在', () => {
   test('指向一个不存在的 id：报警告', () => {
@@ -130,13 +134,17 @@ describe('开场钩子不要和讲解说同一句话', () => {
 
   const ECHO = 'content/hook_echoes_explanation'
 
-  test('两句几乎一致：报警告', () => {
+  /*
+   * severity 要一起断言。这条规则的意义全在它拦不拦得住：报成 warn 的话
+   * 上游 PR 的 CI 照样是绿的，警告只留在 run 日志里，没人点开看。
+   */
+  test('两句几乎一致：报错误，拦住上线', () => {
     const a = pair(
       '大成殿是夫子庙主殿，大殿七间，藏有反映孔子生平和教育思想的彩色壁画。',
       '大成殿是夫子庙主殿，大殿七间，藏有反映孔子生平和教育思想的彩色壁画，具体陈列以现场说明为准。',
     )
 
-    expect(rulesOf(a, mapOf(a))).toContain(ECHO)
+    expect(findingOf(a, mapOf(a), ECHO)?.severity).toBe('error')
   })
 
   test('钩子答「这是什么」、讲解答「凭什么值得看」：不报', () => {
@@ -174,6 +182,21 @@ describe('开场钩子不要和讲解说同一句话', () => {
 })
 
 describe('真实锚点全过门禁', () => {
+  /*
+   * 这一条是把 severity 翻成 error 的前提：现存锚点必须一条都不报，
+   * 否则门禁当天就红，而红的原因是历史欠账不是当次提交。
+   * 它也顺带盯住后面 22 个锚点——谁再写出重复的一对，这里先红。
+   */
+  test('没有任何锚点的开场钩子与讲解说同一句话', async () => {
+    const anchors = await loadAnchors()
+
+    const echoes = [...anchors.values()]
+      .flatMap((a) => lintAnchor(a, anchors))
+      .filter((f) => f.rule === 'content/hook_echoes_explanation')
+
+    expect(echoes).toEqual([])
+  })
+
   test('四个锚点都没有 next_action/dangling', async () => {
     const anchors = await loadAnchors()
 

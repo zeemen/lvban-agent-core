@@ -190,7 +190,11 @@ export const lintAnchor = (
    * 门禁原先看不见这件事：renderPaths() 只枚举 renderFromAnchor 的六条路径，
    * 卡片那条出口从来没进过检查，所以近乎重复的一对能一路绿着过。
    *
-   * 只报警告：这是内容质量，不是契约违反——拦不住上线，但得有人看见。
+   * 报错误，不是警告。先按警告上线过一轮，是因为当时现存 5 个锚点都踩着
+   * 这一条，翻成错误门禁当天就红，而红的原因是历史欠账不是当次提交。
+   * 那 5 条文案改完（23a634e）、真实内容一条都不报之后才翻的。
+   * 翻的理由：中台按 git PR 交付，警告只出现在 run 日志里，不挡合并，
+   * 没人点开看——那等于没有门禁。
    */
   for (const voice of Object.values(VOICE_BY_REGISTER)) {
     const hook = e.openingHook[voice]
@@ -202,7 +206,7 @@ export const lintAnchor = (
 
     findings.push({
       anchorId: anchor.anchorId,
-      severity: 'warn',
+      severity: 'error',
       rule: 'content/hook_echoes_explanation',
       detail: `${voice} 档的开场钩子与讲解相似度 ${ratio.toFixed(2)}`
         + `（阈值 ${HOOK_ECHO_THRESHOLD}）：卡片与讲解在说同一句`,
@@ -311,7 +315,8 @@ const run = async (): Promise<void> => {
   if (errors.length > 0) {
     console.log(
       '\n错误必须修复后方可上线：口吻问题改文案，缺 K1 来源补资料源，'
-      + '关联锚点占位按规格 04 §4.1 改成正式 id。',
+      + '关联锚点占位按规格 04 §4.1 改成正式 id，'
+      + '开场钩子与讲解重复的按「钩子答这是什么、讲解答凭什么值得看」分开写。',
     )
     process.exitCode = 1
   }

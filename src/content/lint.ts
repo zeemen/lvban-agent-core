@@ -53,6 +53,14 @@ const renderPaths = (): readonly { readonly label: string; readonly decision: Pl
       },
     },
     { label: '亲子·首访', decision: { ...base, register: 'storyteller' } },
+    /*
+     * 课本连接这一路原先一条路径都没枚举：base 里 linkCurriculum 固定 false，
+     * 下面六条没有一条翻过来。只要所有锚点的 connection.curriculum 都是 null，
+     * 这个盲区看不出来——2026-11-27 竹林七贤填上第一条课本连接之后，
+     * 运行时（12_15 年龄段）会多念一行「课本里也有：…」，而门禁一个字都没检查过。
+     * 这正是本文件开头那条注释要防的漂移，所以把它补成一条路径。
+     */
+    { label: '同游·首访·课本连接', decision: { ...base, linkCurriculum: true } },
     {
       label: '轻导览',
       decision: { ...base, register: 'concise', openWith: 'fact', length: 'short', useStory: false },

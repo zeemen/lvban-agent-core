@@ -17,3 +17,7 @@ audio-cache/
 
 # 微信开发者工具的每开发者私有配置，由工具自动生成
 miniprogram/project.private.config.json
+
+# 这页架构问答的正本在 Artifact 上，本地这份只是落盘副本
+# 注意：同类的另外三页企划/架构 HTML 是入库的，这条只排除这一个文件，不要改成 *.html
+旅伴架构四问.html

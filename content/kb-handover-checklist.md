@@ -24,6 +24,9 @@
 
 ## 二、要你们回答的三个问题（答案决定这批能不能用）
 
+> 2026-11-28 已开给中台：[weknora-data-factory#5](https://github.com/zeemen/weknora-data-factory/issues/5)。
+> 下面三问与第三节那五样东西都在那个 issue 里，回答跟进看那边。
+
 ### 1. 那台 WeKnora 是什么镜像版本？
 
 **这条最可能让整批白做。** 产品检索必发 `disable_vector_match: true`，而 v0.9.0 有个回归
